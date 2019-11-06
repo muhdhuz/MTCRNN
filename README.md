@@ -34,7 +34,7 @@ Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) rep
 ## Training
 
 ```bash
-python train.py --param_dir data/param --prop sepc_centroid rmse --cond_size 2
+python train.py --param_dir data/param --prop spec_centroid rmse --cond_size 2
 ```
 
 
