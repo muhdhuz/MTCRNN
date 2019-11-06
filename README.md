@@ -17,7 +17,7 @@ Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) rep
 **Dependencies**  
 * PyTorch >= 1.0
 * [paramManager](https://github.com/lonce/paramManager)
-* PySoundfile for loading audio files
+* PySoundfile >= 0.9 for loading audio files
   
 **Authors**  
 * Muhammad Huzaifah
@@ -27,7 +27,7 @@ Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) rep
 
 **To do**  
  - [ ] Generation script
- - [ ] Move comprehensive saving / logging
+ - [ ] More comprehensive saving / logging
  - [ ] Multi-tier conditioning
  - [ ] Continue training from checkpoint
 
