@@ -5,11 +5,10 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--hidden_size', type=int, default=60,
-                    help='no. of hidden nodes for each GRU layer')
+parser.add_argument('--hidden_size', type=int, default=60, help='no. of hidden nodes for each GRU layer')
 #parser.add_argument('--output_size', type=int, default=256,
 #                    help='mu-law encode factor = one-hot size = final network layer size')
-parser.add_argument('--n_layers', type=int, default=3, help='no of stacked GRU layers')
+parser.add_argument('--n_layers', type=int, default=4, help='no of stacked GRU layers')
 
 parser.add_argument('--sample_rate', type=int, default=16000, help='sampling rate for input sound')
 parser.add_argument('--seq_len', type=int, default=4000, help='sequence length of each input data in no. of samples')
@@ -19,22 +18,31 @@ parser.add_argument('--batch_size', type=int, default=12, help='minibatch size f
 
 parser.add_argument('--param_dir', type=str, default=None, help='parameter file directory ')
 parser.add_argument('--prop', type=str, default=None, nargs='+', help='parameters to be used')
-parser.add_argument('--cond_size', type=int, default=0,
-                    help='conditional vectors size')
+parser.add_argument('--input_size', type=int, default=256, help='input vector size: audio + conditional vector')
+parser.add_argument('--paramonly', action='store_true', help='whether training only on parameters (no audio)')
 
 
 def parse_args(is_training=True):
     if is_training:
         parser.add_argument('--data_dir', type=str, default='./data/audio', help='training data directory')
-        parser.add_argument('--output_dir', type=str, default='./output', help='Output dir for saving model and etc')
-        parser.add_argument('--num_steps', type=int, default=1, help='Total training steps')
+        parser.add_argument('--output_dir', type=str, default='./output', help='output dir for saving model and etc')
+        parser.add_argument('--num_steps', type=int, default=50000, help='total training steps')
         parser.add_argument('--lr', type=float, default=0.0002, help='learning rate')
-        parser.add_argument('--checkpoint', type=float, default=11, help='save model every checkpoint steps')
+        parser.add_argument('--checkpoint', type=float, default=10000, help='save model every checkpoint steps')
+        parser.add_argument('--model_dir', type=str, default=None, help='to resume from checkpoint, supply a model dir')
+        parser.add_argument('--step', type=int, default=0, help='a specific step of model checkpoint to resume from')
     else:
-        parser.add_argument('--model_dir', type=str, required=True, help='Pre-trained model dir')
-        parser.add_argument('--step', type=int, default=0, help='A specific step of pre-trained model to use')
-        parser.add_argument('--seed', type=str, help='A seed file to generate sound')
-        parser.add_argument('--out', type=str, help='Output file name which is generated')
+        parser.add_argument('--model_dir', type=str, required=True, help='pre-trained model dir')
+        parser.add_argument('--step', type=int, default=0, help='a specific step of pre-trained model to use')
+        parser.add_argument('--length', type=int, default=16000, help='length of synthesized output in samples')
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--seed', type=str, default=None, help='a seed file to generate sound')
+        group.add_argument('--data_dir', type=str, default='./data/audio', help='a test data directory to generate sound')
+        parser.add_argument('--paramvect',default='self', const='self', nargs='?',choices=('self', 'external','none'),
+                    help='source of paramvect. self(default): taken from data file, external: taken from numpy array, none: no conditioning')
+        #parser.add_argument('--seed', type=str, help='a seed file to generate sound')
+        #parser.add_argument('--data_dir', type=str, default='./data/audio', help='test data directory')
+        parser.add_argument('--out', type=str, default='generated', help='output file name which is generated')
 
     return parser.parse_args()
 

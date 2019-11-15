@@ -8,18 +8,18 @@ import torch
 import torch.nn as nn
 
 class RnnBlock(nn.Module):
-    def __init__(self, cond_size, hidden_size, output_size, n_layers):
+    def __init__(self, input_size, hidden_size, output_size, n_layers):
         """
         A stack of RNN layers with dense layers at input and output
         cond_size: size of conditional vector
-        input_size: if input layer - no. of input audio channels+conditional vectors, for one-hot audio=mu-law channels + cond vector size
-                    if middle block - no. output of previous block 
+        input_size: if input layer - no. of input audio channels+conditional vectors, 
+                    for one-hot audio=mu-law channels + cond vector size
         hidden_size: no. of hidden nodes for each GRU layer
         output_size: size of output, normally=256 for 8-bit mu-law if final layer
         n_layers: no of stacked GRU layers
         """
         super(RnnBlock, self).__init__()
-        self.input_size = cond_size + output_size
+        self.input_size = input_size
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.n_layers = n_layers

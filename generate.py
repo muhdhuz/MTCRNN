@@ -1,94 +1,144 @@
 """
 A script for WaveNet training
+
+TO DO:
+- take seed file 16000 in length, use first seq_len to build hidden state, use (length-seq_len) to generate
 """
 import torch
-import librosa
+import soundfile as sf
+#import librosa 
 import datetime
 import numpy as np
+import os
 
-import wavenet.config as config
-from wavenet.model import WaveNet
-import wavenet.utils.data as utils
+import network.config as config
+from network.model import CondRNN
+from dataloader.dataloader import DataLoader
 
 
 class Generator:
-    def __init__(self, args):
-        self.args = args
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+	def __init__(self, args):
+		self.args = args
+		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        self.wavenet = WaveNet(args.layer_size, args.stack_size,
-                               args.in_channels, args.res_channels,self.device)
+		if args.paramonly:
+			self.model = CondRNN(args.input_size, args.hidden_size,
+								args.input_size, args.n_layers, self.device,
+								paramonly=args.paramonly)
+		else:
+			self.model = CondRNN(args.input_size, args.hidden_size,
+								args.mulaw_channels, args.n_layers, self.device,
+								paramonly=args.paramonly)
 
-        self.wavenet.load(args.model_dir, args.step)
+		self.model.load(args.model_dir, args.step)
+
+		if args.seed is not None:
+			args.batch_size = 1
+			args.data_dir = args.seed
+
+		self.data_loader = DataLoader(args.data_dir, args.sample_rate, args.seq_len, args.stride, 
+									paramdir=args.param_dir, prop=args.prop,
+									mulaw_channels=args.mulaw_channels,
+									batch_size=args.batch_size,
+									paramonly=args.paramonly)
+
+		#if args.paramvect is not None:
+		#	self.paramvect = np.load(args.paramvect)
 
 
+	def _random_primer(self,cond_size,length=1,seed=None):
+		#NOT IMPLEMENTED
+		"""make noisy priming signal
+		primer shape: [batchsize,length,cond_size+1]"""
+		np.random.seed(seed)
+		myp=np.zeros([1,length,cond_size+1])
+		myp[0,:,0] =.1*np.random.ranf([length]) #signal
+		for dim in range(cond_size):
+			myp[0,:,dim+1] =.1*np.random.ranf([length])#-.15 #signal
+		#myp[0,:,1] = .45+.1*np.random.ranf([length])     #instrument
+		#myp[0,:,2] = .05*np.random.ranf([length])    #volume
+		#myp[0,:,3] = np.random.ranf([1])    #pitch
+		return torch.tensor(myp, dtype=torch.float, device=cfg.device)
 
-    @staticmethod
-    def _variable(data):
-        tensor = torch.from_numpy(data).type(torch.FloatTensor)
-        return tensor
 
+	def _get_seed_from_audio(self, filepath):
+		audio, _ = sf.read(filepath)
+		audio_length = len(audio)
 
-    def _make_seed(self, audio):
-        audio = np.pad([audio], [[0, 0], [self.wavenet.receptive_fields, 0], [0, 0]], 'constant')
+		audio = utils.mu_law_encode(audio, self.args.in_channels)
+		audio = utils.one_hot_encode(audio, self.args.in_channels)
 
-        if self.args.sample_size:
-            seed = audio[:, :self.args.sample_size, :]
-        else:
-            seed = audio[:, :self.wavenet.receptive_fields*2, :]
+		seed = self._make_seed(audio)
 
-        return seed
+		return self._variable(seed).to(self.device), audio_length
 
-    def _get_seed_from_audio(self, filepath):
-        audio = utils.load_audio(filepath, self.args.sample_rate)
-        audio_length = len(audio)
+	def _save_to_audio_file(self, data):
+		for i in range(data.shape[0]):
+		# = data[0].detach().cpu().numpy()
+		#data = utils.one_hot_decode(data, axis=1)
+		#audio = utils.mu_law_decode(data, self.args.in_channels)
+			#print(data[i])
+			sf.write(self.args.out+str(i)+'.wav', data[i], 16000, 'PCM_24')
+			#librosa.output.write_wav(self.args.out+str(i), data[i], self.args.sample_rate)
+			print('Saved wav file as {}'.format(self.args.out+str(i)))
 
-        audio = utils.mu_law_encode(audio, self.args.in_channels)
-        audio = utils.one_hot_encode(audio, self.args.in_channels)
+		#return None librosa.get_duration(y=audio, sr=self.args.sample_rate)
 
-        seed = self._make_seed(audio)
+	def generate(self):
+		outputs = []
 
-        return self._variable(seed).to(self.device), audio_length
+		#print("PA",paramvect.shape)
+		#inputs, audio_length = self._get_seed_from_audio(self.args.seed)
+		for inputs, _ in self.data_loader:
+			#print("ORI IN",inputs)
+			input = inputs[:,:self.args.seq_len-self.args.length,:].to(self.device)
+			#print("INPUT",input.shape)
+			#print("INPUT",input)
+			next_input, hidden = self.model.build_hidden_state(input)
+			#print("NEXT INPUT",next_input.shape)
+			for length in range(self.args.length):
 
-    def _save_to_audio_file(self, data):
-        data = data[0].detach().cpu().numpy()
-        data = utils.one_hot_decode(data, axis=1)
-        audio = utils.mu_law_decode(data, self.args.in_channels)
+				transformed_sample, predicted_sample, hidden = self.model.generate(next_input, hidden)
+				#print("TS",transformed_sample.shape)
+				#print("PS",predicted_sample.shape)
+				if predicted_sample.shape[1] > 1:
+					predicted_sample = np.expand_dims(predicted_sample, axis=1) 
+				outputs = np.concatenate((outputs, predicted_sample),axis=1) if len(outputs) else predicted_sample
+				#print("OUTSHAPE",outputs.shape)
+				print('{0}/{1} samples are generated.'.format(outputs.shape[1], self.args.length))
+				if self.args.paramvect == 'self':
+					#paramvect_new = paramvect + 0.00001*length
+					paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.mulaw_channels:]
+					#print("P",paramvect.shape)
+					#print("P",paramvect)
+					#batchparams = np.tile(paramvect_new,(self.args.batch_size,1))
+					#paramvect_tensor = torch.from_numpy(batchparams).type(torch.FloatTensor)
 
-        librosa.output.write_wav(self.args.out, audio, self.args.sample_rate)
-        print('Saved wav file at {}'.format(self.args.out))
-
-        return librosa.get_duration(y=audio, sr=self.args.sample_rate)
-
-    def generate(self):
-        outputs = []
-        inputs, audio_length = self._get_seed_from_audio(self.args.seed)
-
-        while True:
-            new = self.wavenet.generate(inputs)
-
-            outputs = torch.cat((outputs, new), dim=1) if len(outputs) else new
-
-            print('{0}/{1} samples are generated.'.format(len(outputs[0]), audio_length))
-
-            if len(outputs[0]) >= audio_length:
-                break
-
-            inputs = torch.cat((inputs[:, :-len(new[0]), :], new), dim=1)
-
-        outputs = outputs[:, :audio_length, :]
-
-        return self._save_to_audio_file(outputs)
-
+					next_input = torch.cat((transformed_sample,paramvect),dim=1).to(self.device)
+				elif self.args.paramvect == 'none':
+					next_input = transformed_sample
+				#print("NI",next_input) 
+				#print("NI shape",next_input.shape)
+			break
+		#outputs = outputs[:, :self.args.length, :]
+		#print(outputs.shape)
+		if not self.args.paramonly:
+			self._save_to_audio_file(outputs)
+			#return outputs, original params, original audio
+			return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.mulaw_channels:], inputs[:,self.args.seq_len-self.args.length:,:self.args.mulaw_channels]
+		else:
+			#return outputs, original params
+			return outputs, inputs[:,self.args.seq_len-self.args.length:,:]
 
 if __name__ == '__main__':
-    args = config.parse_args(is_training=False)
+	args = config.parse_args(is_training=False)
+	print(args)
 
-    generator = Generator(args)
+	generator = Generator(args)
 
-    start_time = datetime.datetime.now()
+	start_time = datetime.datetime.now()
 
-    duration = generator.generate()
+	generator.generate()
 
-    print('Generate {0} seconds took {1}'.format(duration, datetime.datetime.now() - start_time))
+	print('Generate took {0} seconds'.format(datetime.datetime.now() - start_time))
 
