@@ -5,20 +5,20 @@ import argparse
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--hidden_size', type=int, default=60, help='no. of hidden nodes for each GRU layer')
+parser.add_argument('--hidden_size', type=int, default=80, help='no. of hidden nodes for each GRU layer')
 #parser.add_argument('--output_size', type=int, default=256,
 #                    help='mu-law encode factor = one-hot size = final network layer size')
 parser.add_argument('--n_layers', type=int, default=4, help='no of stacked GRU layers')
 
 parser.add_argument('--sample_rate', type=int, default=16000, help='sampling rate for input sound')
-parser.add_argument('--seq_len', type=int, default=4000, help='sequence length of each input data in no. of samples')
+parser.add_argument('--seq_len', type=int, default=8000, help='sequence length of each input data in no. of samples')
 parser.add_argument('--stride', type=int, default=1, help='shift in no. of samples between adjacent data sequences')
 parser.add_argument('--mulaw_channels', type=int, default=256, help='mu-law encoding channels')
 parser.add_argument('--batch_size', type=int, default=12, help='minibatch size for training input')
 
 parser.add_argument('--param_dir', type=str, default=None, help='parameter file directory ')
 parser.add_argument('--prop', type=str, default=None, nargs='+', help='parameters to be used')
-parser.add_argument('--input_size', type=int, default=256, help='input vector size: audio + conditional vector')
+parser.add_argument('--input_size', type=int, default=3, help='input vector size: audio + conditional vector')
 parser.add_argument('--paramonly', action='store_true', help='whether training only on parameters (no audio)')
 
 
@@ -26,7 +26,7 @@ def parse_args(is_training=True):
     if is_training:
         parser.add_argument('--data_dir', type=str, default='./data/audio', help='training data directory')
         parser.add_argument('--output_dir', type=str, default='./output', help='output dir for saving model and etc')
-        parser.add_argument('--num_steps', type=int, default=50000, help='total training steps')
+        parser.add_argument('--num_steps', type=int, default=100000, help='total training steps')
         parser.add_argument('--lr', type=float, default=0.0002, help='learning rate')
         parser.add_argument('--checkpoint', type=float, default=10000, help='save model every checkpoint steps')
         parser.add_argument('--model_dir', type=str, default=None, help='to resume from checkpoint, supply a model dir')
@@ -40,8 +40,6 @@ def parse_args(is_training=True):
         group.add_argument('--data_dir', type=str, default='./data/audio', help='a test data directory to generate sound')
         parser.add_argument('--paramvect',default='self', const='self', nargs='?',choices=('self', 'external','none'),
                     help='source of paramvect. self(default): taken from data file, external: taken from numpy array, none: no conditioning')
-        #parser.add_argument('--seed', type=str, help='a seed file to generate sound')
-        #parser.add_argument('--data_dir', type=str, default='./data/audio', help='test data directory')
         parser.add_argument('--out', type=str, default='generated', help='output file name which is generated')
 
     return parser.parse_args()

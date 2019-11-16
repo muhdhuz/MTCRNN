@@ -292,13 +292,13 @@ class DataLoader(data.DataLoader):
 		else:
 			self.dataset = AudioDataset(datadir, sr, seqLen, stride,
 					paramdir, prop, extension,
-					transform=transform.Compose([tr.mulawEncode(mulaw_channels),tr.onehotEncode(mulaw_channels),tr.array2tensor(torch.FloatTensor)]),
+					transform=transform.Compose([tr.mulawEncode(mulaw_channels,norm=True),tr.array2tensor(torch.FloatTensor)]),
 					param_transform=transform.Compose(param_transform_list),
 					target_transform=transform.Compose([tr.mulawEncode(mulaw_channels),tr.array2tensor(torch.LongTensor)]))
 
 		super(DataLoader, self).__init__(self.dataset, batch_size, shuffle, num_workers=num_workers)
 
-
+#tr.onehotEncode(mulaw_channels)
 """
 from transforms import mulawnEncode,mulaw,array2tensor,dic2tensor	
 sr = 16000

@@ -51,7 +51,7 @@ Generation has 3 modes of conditioning given by **paramvect** option:
 * none: no conditioning  
 
 **Generate sample-level tier (audio)**  
-Below case will output audio length 16000 samples. (seq_len-length) samples is used for priming. REquires a trained model found in **model_dir** and defined by **step**.   
+Below case will output audio length 16000 samples. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**.   
 ```bash
 python generate.py --batch_size 4 --seq_len 18000 --param_dir data/param --prop spec_centroid rmse --input_size 258 --model_dir output/tier1/model --step 100000 --length 16000 --paramvect self
 ```

@@ -33,9 +33,11 @@ class mulawEncode:
 	"""
 	Quantize waveform amplitudes.
 	Reference: https://github.com/vincentherrmann/pytorch-wavenet/blob/master/audio_data.py
+	norm: normalize mulaw between [0,quantization_channels] to [0,1]
 	"""
-	def __init__(self,quantization_channels=256):
+	def __init__(self,quantization_channels=256,norm=False):
 		self.quantization_channels = quantization_channels
+		self.norm = norm
 
 	def __call__(self, audio):
 		mu = float(self.quantization_channels - 1)
@@ -43,6 +45,9 @@ class mulawEncode:
 
 		quantized = np.sign(audio) * np.log(1 + mu * np.abs(audio)) / np.log(mu + 1)
 		quantized = np.digitize(quantized, quantize_space) - 1
+
+		if self.norm:
+			quantized = quantized/self.quantization_channels
 
 		return quantized
 
