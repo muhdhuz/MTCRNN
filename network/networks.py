@@ -30,8 +30,8 @@ class RnnBlock(nn.Module):
     
 
     # input and cv are each one sequence element 
-    def forward(self, input, hidden, batch_size=1):       
-        h1 = self.i2h(input)    
+    def forward(self, input, hidden, batch_size=1):     
+        h1 = self.i2h(input)      
         h_out, hidden = self.gru(h1.view(batch_size,1,-1), hidden)  #hidden shape = (n_layers*n_directions,batch_size,hidden_size)
         output = self.h2o(h_out.view(batch_size,-1))                #h_out shape = (timestep,batch_size,hidden_size*n_directions)
         return output, hidden

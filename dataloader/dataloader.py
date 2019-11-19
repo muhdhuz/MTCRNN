@@ -273,7 +273,7 @@ class DataLoader(data.DataLoader):
 	def __init__(self, datadir, sr=16000, seqLen=512, stride=1, 
 				paramdir=None, prop=None, extension='.wav',
 				mulaw_channels=256,
-				batch_size=1, shuffle=True, num_workers=4, paramonly=False):
+				batch_size=1, shuffle=True, num_workers=4, paramonly=False, onehot=False):
 
 		param_transform_list = []
 		if 'spec_centroid' in prop:
@@ -290,15 +290,20 @@ class DataLoader(data.DataLoader):
 					param_transform=transform.Compose(param_transform_list))
 
 		else:
+			if onehot:
+				audio_transform_list =  [tr.mulawEncode(mulaw_channels,norm=False),tr.onehotEncode(mulaw_channels),tr.array2tensor(torch.FloatTensor)]
+			else:
+				audio_transform_list =  [tr.mulawEncode(mulaw_channels,norm=True),tr.array2tensor(torch.FloatTensor)]
+			
 			self.dataset = AudioDataset(datadir, sr, seqLen, stride,
 					paramdir, prop, extension,
-					transform=transform.Compose([tr.mulawEncode(mulaw_channels,norm=True),tr.array2tensor(torch.FloatTensor)]),
+					transform=transform.Compose(audio_transform_list),
 					param_transform=transform.Compose(param_transform_list),
 					target_transform=transform.Compose([tr.mulawEncode(mulaw_channels),tr.array2tensor(torch.LongTensor)]))
 
 		super(DataLoader, self).__init__(self.dataset, batch_size, shuffle, num_workers=num_workers)
 
-#tr.onehotEncode(mulaw_channels)
+
 """
 from transforms import mulawnEncode,mulaw,array2tensor,dic2tensor	
 sr = 16000

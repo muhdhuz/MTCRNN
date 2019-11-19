@@ -57,11 +57,14 @@ class mulawDecode:
 	Recovers waveform from quantized values.
 	Reference: https://github.com/vincentherrmann/pytorch-wavenet/blob/master/audio_data.py
 	"""
-	def __init__(self,quantization_channels=256):
+	def __init__(self,quantization_channels=256,norm=False):
 		self.quantization_channels = quantization_channels
+		self.norm = norm
 
 	def __call__(self, output):
 		mu = float(self.quantization_channels - 1)
+		if self.norm:
+			 output = (output*self.quantization_channels).astype(int)
 
 		expanded = (output / self.quantization_channels) * 2. - 1
 		waveform = np.sign(expanded) * (

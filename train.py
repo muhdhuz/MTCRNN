@@ -27,7 +27,8 @@ class Trainer:
 									paramdir=args.param_dir, prop=args.prop,
 									mulaw_channels=args.mulaw_channels,
 									batch_size=args.batch_size,
-									paramonly=args.paramonly)
+									paramonly=args.paramonly,
+									onehot=args.onehot)
 		
 		self.epoch_size = len(self.data_loader)
 

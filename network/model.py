@@ -14,7 +14,7 @@ import dataloader.transforms as tr
 
 
 class CondRNN:
-	def __init__(self, input_size, hidden_size, output_size, n_layers, device, lr=0.002, paramonly=False):
+	def __init__(self, input_size, hidden_size, output_size, n_layers, device, lr=0.002, paramonly=False, onehot=False):
 		self.device = device
 		self.net = RnnModule(input_size, hidden_size, output_size, n_layers).to(self.device)
 		print(self.net)
@@ -24,6 +24,7 @@ class CondRNN:
 		self.optimizer = self._optimizer()
 		self.output_size = output_size
 		self.paramonly = paramonly
+		self.onehot = onehot
 
 	def _loss(self,paramonly):
 		if paramonly:
@@ -73,12 +74,14 @@ class CondRNN:
 		log_output = torch.nn.functional.log_softmax(output,dim=1)
 		topv, topi = log_output.topk(1) #output topi is a mu-law index
 		mulaw_output = topi.detach().cpu().numpy()
-		#("RES",mulaw_output)
-		#print("RESs",mulaw_output.shape)
 
 		#encode for next step
-		mulaw_to_onehot = transform.Compose([tr.onehotEncode(self.output_size),tr.array2tensor(torch.FloatTensor)])
-		next_input = mulaw_to_onehot(mulaw_output)
+		if self.onehot:
+			mulaw_to_onehot = transform.Compose([tr.onehotEncode(self.output_size),tr.array2tensor(torch.FloatTensor)])
+		else:
+			mulaw_output_norm = mulaw_output/self.output_size
+			mulaw_to_onehot = tr.array2tensor(torch.FloatTensor)
+		next_input = mulaw_to_onehot(mulaw_output_norm)
 		
 		#decode to get audio sample
 		predicted_sample = tr.mulawDecode(self.output_size)(mulaw_output)

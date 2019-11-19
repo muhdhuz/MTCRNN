@@ -24,11 +24,13 @@ class Generator:
 		if args.paramonly:
 			self.model = CondRNN(args.input_size, args.hidden_size,
 								args.input_size, args.n_layers, self.device,
-								paramonly=args.paramonly)
+								paramonly=args.paramonly,
+								onehot=args.onehot)
 		else:
 			self.model = CondRNN(args.input_size, args.hidden_size,
 								args.mulaw_channels, args.n_layers, self.device,
-								paramonly=args.paramonly)
+								paramonly=args.paramonly,
+								onehot=args.onehot)
 
 		self.model.load(args.model_dir, args.step)
 
@@ -40,7 +42,8 @@ class Generator:
 									paramdir=args.param_dir, prop=args.prop,
 									mulaw_channels=args.mulaw_channels,
 									batch_size=args.batch_size,
-									paramonly=args.paramonly)
+									paramonly=args.paramonly,
+									onehot=args.onehot)
 
 		#if args.paramvect is not None:
 		#	self.paramvect = np.load(args.paramvect)
@@ -95,12 +98,12 @@ class Generator:
 			#print("INPUT",input.shape)
 			#print("INPUT",input)
 			next_input, hidden = self.model.build_hidden_state(input)
-			#print("NEXT INPUT",next_input.shape)
+			#print("NEXT INPUT",next_input)
 			for length in range(self.args.length):
 
 				transformed_sample, predicted_sample, hidden = self.model.generate(next_input, hidden)
-				#print("TS",transformed_sample.shape)
-				#print("PS",predicted_sample.shape)
+				#print("TS",transformed_sample)
+				#print("PS",predicted_sample)
 				if predicted_sample.shape[1] > 1:
 					predicted_sample = np.expand_dims(predicted_sample, axis=1) 
 				outputs = np.concatenate((outputs, predicted_sample),axis=1) if len(outputs) else predicted_sample
@@ -108,7 +111,10 @@ class Generator:
 				print('{0}/{1} samples are generated.'.format(outputs.shape[1], self.args.length))
 				if self.args.paramvect == 'self':
 					#paramvect_new = paramvect + 0.00001*length
-					paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.mulaw_channels:]
+					if self.args.onehot:
+						paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.mulaw_channels:]
+					else:
+						paramvect = inputs[:,self.args.seq_len-self.args.length+length,1:]
 					#print("P",paramvect.shape)
 					#print("P",paramvect)
 					#batchparams = np.tile(paramvect_new,(self.args.batch_size,1))
@@ -125,7 +131,10 @@ class Generator:
 		if not self.args.paramonly:
 			self._save_to_audio_file(outputs)
 			#return outputs, original params, original audio
-			return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.mulaw_channels:], inputs[:,self.args.seq_len-self.args.length:,:self.args.mulaw_channels]
+			if self.args.onehot:
+				return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.mulaw_channels:], inputs[:,self.args.seq_len-self.args.length:,:self.args.mulaw_channels]
+			else:
+				return outputs, inputs[:,self.args.seq_len-self.args.length:,1:], inputs[:,self.args.seq_len-self.args.length:,0]
 		else:
 			#return outputs, original params
 			return outputs, inputs[:,self.args.seq_len-self.args.length:,:]

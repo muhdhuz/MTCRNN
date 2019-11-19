@@ -20,6 +20,7 @@ parser.add_argument('--param_dir', type=str, default=None, help='parameter file 
 parser.add_argument('--prop', type=str, default=None, nargs='+', help='parameters to be used')
 parser.add_argument('--input_size', type=int, default=3, help='input vector size: audio + conditional vector')
 parser.add_argument('--paramonly', action='store_true', help='whether training only on parameters (no audio)')
+parser.add_argument('--onehot', action='store_true', help='whether to transform mulaw to onehot prior to input')
 
 
 def parse_args(is_training=True):
