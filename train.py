@@ -17,11 +17,11 @@ class Trainer:
 		if args.paramonly:
 			self.model = CondRNN(args.input_size, args.hidden_size,
 								args.input_size, args.n_layers, self.device,
-								lr=args.lr,paramonly=args.paramonly)
+								lr=args.lr,paramonly=args.paramonly,onehot=args.onehot)
 		else:
 			self.model = CondRNN(args.input_size, args.hidden_size,
 								args.mulaw_channels, args.n_layers, self.device,
-								lr=args.lr,paramonly=args.paramonly)
+								lr=args.lr,paramonly=args.paramonly,onehot=args.onehot)
 
 		self.data_loader = DataLoader(args.data_dir, args.sample_rate, args.seq_len, args.stride, 
 									paramdir=args.param_dir, prop=args.prop,

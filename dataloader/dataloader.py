@@ -276,8 +276,8 @@ class DataLoader(data.DataLoader):
 				batch_size=1, shuffle=True, num_workers=4, paramonly=False, onehot=False):
 
 		param_transform_list = []
-		if 'spec_centroid' in prop:
-			param_transform_list.append(tr.normalizeDim('spec_centroid',0,8000))  #nyquist sr/2 
+		#if 'spec_centroid' in prop:
+		#	param_transform_list.append(tr.normalizeDim('spec_centroid',0,8000))  #nyquist sr/2 
 		
 		param_transform_list.append(tr.dic2tensor(torch.FloatTensor))
 
