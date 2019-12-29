@@ -14,9 +14,9 @@ Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) rep
     - `dataloader.py` : Dataset, Dataloading utilities, including calling transforms on data
     - `transforms.py` : Utilities for data transformations
 - /myUtils
-    - `myUtils.py` : Utilities for data transformations
+    - `myUtils.py` : Some useful routines
 - /paramManager
-    - `paramManager.py` : Utilities for data transformations      
+    - `paramManager.py` : A library to handle param files, do resampling     
 
 **Dependencies**  
 * PyTorch >= 1.0
