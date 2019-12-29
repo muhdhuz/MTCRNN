@@ -7,8 +7,6 @@ parser = argparse.ArgumentParser()
 
 #network arguments
 parser.add_argument('--hidden_size', type=int, default=800, help='no. of hidden nodes for each GRU layer')
-#parser.add_argument('--output_size', type=int, default=256,
-#                    help='mu-law encode factor = one-hot size = final network layer size')
 parser.add_argument('--n_layers', type=int, default=3, help='no of stacked GRU layers')
 
 #training arguments
@@ -21,9 +19,9 @@ parser.add_argument('--batch_size', type=int, default=16, help='minibatch size f
 #data arguments
 parser.add_argument('--param_dir', type=str, default=None, help='parameter file directory ')
 parser.add_argument('--prop', type=str, default=None, nargs='+', help='parameters to be used as conditioning')
+parser.add_argument('--cond_size', type=int, default=16, help='input vector size: conditional vector')
 parser.add_argument('--generate', type=str, default=['audio'], nargs='+', help='parameters/audio to be generated, defaults audio')
 parser.add_argument('--gen_size', type=int, default=1, help='input vector size: generated features, if audio only = 1 or one-hot channels')
-parser.add_argument('--cond_size', type=int, default=16, help='input vector size: conditional vector')
 #parser.add_argument('--paramonly', action='store_true', help='whether training only on parameters (no audio)')
 parser.add_argument('--onehot', action='store_true', help='whether to transform mulaw to onehot prior to input')
 parser.add_argument('--temp', type=float, default=0.9, help='temperature param for sampling')
@@ -48,7 +46,10 @@ def parse_args(is_training=True):
         parser.add_argument('--paramvect',default='self', const='self', nargs='?',choices=('self', 'external','none'),
                     help='source of paramvect. self(default): taken from data file, external: taken from numpy array, none: no conditioning')
         parser.add_argument('--out', type=str, default='generated', help='output file name which is generated')
- 
+        parser.add_argument('--external_array', type=str, default=None, help='a saved numpy array of shape [batch,length,features] for external conditioning')        
+        parser.add_argument('--external_sr', type=int, default=None, help='original sample rate of external conditioning array')
+        parser.add_argument('--save', action='store_true', help='save the output (if audio this is automatic)')  
+    
     return parser.parse_args()
 
 

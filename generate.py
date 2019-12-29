@@ -41,8 +41,8 @@ class Generator:
 									batch_size=args.batch_size,
 									onehot=args.onehot)
 
-		#if args.paramvect is not None:
-		#	self.paramvect = np.load(args.paramvect)
+		if args.external_array is not None:
+			self.param_array = np.load(args.external_array)
 
 
 	def _random_primer(self,cond_size,length=1,seed=None):
@@ -81,16 +81,22 @@ class Generator:
 	def generate(self,params=None,original_sr=None):
 		outputs = []
 		if self.args.paramvect == 'external':
-			assert params is not None, "Please provide a parameter array for paramvect option external!"
-			assert original_sr is not None, "Please provide the original sample rate of the parameters for paramvect option external!"
+			if params is None:
+				params = self.param_array
+				assert params is not None, "Please provide a parameter array for paramvect option external!" 
+			if original_sr is None:
+				original_sr = self.args.external_sr
+				assert original_sr is not None, "Please provide the original sample rate of the parameters for paramvect option external!"
 			_,params_re = paramManager.resample(params,original_sr,self.args.sample_rate)
 
 		if self.args.seed is not None:
 			self._get_seed_from_audio(self.args.seed)
 
 		for inputs, _ in self.data_loader:
+			print('priming...')
 			input = inputs[:,:self.args.seq_len-self.args.length,:].to(self.device)
 			next_input, hidden = self.model.build_hidden_state(input)
+			print('DONE')
 
 			for length in range(self.args.length):
 				transformed_sample, predicted_sample, hidden = self.model.generate(next_input,hidden,self.args.temp)
@@ -120,7 +126,10 @@ class Generator:
 			break
 
 		if 'audio' in self.args.generate:
-			self._save_to_audio_file(outputs)		
+			self._save_to_audio_file(outputs)
+		else:
+			if self.args.save:
+				np.save(self.args.out,outputs)
 
 		if self.args.paramvect == 'self':
 			#return: outputs, original cond params, original generated features
