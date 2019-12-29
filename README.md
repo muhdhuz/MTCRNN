@@ -41,7 +41,7 @@ Each tier is an individual model that is trained independently. First decide whi
 List the generation parameters under **generate** and the corresponding number of channels as **gen_size**. List the conditioning parameters under **prop** and the corresponding number of channels as **cond_size**. Specify the **sample_rate** for the tier. Please consult config file for more options and the below for some recipes to get started.  
 
 ## Training
-![Training](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_generation.png) 
+![Training](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_training.png) 
 
 **Training frame-level tier (parameters only)**  
 Tier 3:    
