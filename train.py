@@ -2,11 +2,15 @@
 A script for multi-tier conditional RNN training
 """
 import os
+import time
+from datetime import datetime
 
 import torch
 import network.config as config
 from network.model import CondRNN
 from dataloader.dataloader import DataLoader
+from utils.myUtils import time_taken
+
 
 
 class Trainer:
@@ -14,20 +18,20 @@ class Trainer:
 		self.args = args
 		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-		if args.paramonly:
-			self.model = CondRNN(args.input_size, args.hidden_size,
-								args.input_size, args.n_layers, self.device,
-								lr=args.lr,paramonly=args.paramonly,onehot=args.onehot)
-		else:
-			self.model = CondRNN(args.input_size, args.hidden_size,
+		if 'audio' in args.generate:
+			self.model = CondRNN(args.cond_size+args.gen_size, args.hidden_size,
 								args.mulaw_channels, args.n_layers, self.device,
-								lr=args.lr,paramonly=args.paramonly,onehot=args.onehot)
+								lr=args.lr,paramonly=False,onehot=args.onehot)
+
+		else:
+			self.model = CondRNN(args.cond_size+args.gen_size, args.hidden_size,
+								args.gen_size, args.n_layers, self.device,
+								lr=args.lr,paramonly=True,onehot=args.onehot)
 
 		self.data_loader = DataLoader(args.data_dir, args.sample_rate, args.seq_len, args.stride, 
-									paramdir=args.param_dir, prop=args.prop,
+									paramdir=args.param_dir, prop=args.prop, generate=args.generate,
 									mulaw_channels=args.mulaw_channels,
 									batch_size=args.batch_size,
-									paramonly=args.paramonly,
 									onehot=args.onehot)
 		
 		self.epoch_size = len(self.data_loader)
@@ -45,12 +49,14 @@ class Trainer:
 
 	def run(self):
 		print("Total steps in 1 epoch is", self.epoch_size)
+		print("Starting training at: {:%Y-%m-%d %H:%M:%S}".format(datetime.now()))
+		since = time.time()
 		for step,(inputs, targets) in enumerate(self.infinite_batch(), start=1+args.step):
 			try:
 				inputs, targets = inputs.to(self.device), targets.to(self.device)
-				loss = self.model.train(inputs, targets)
-
-				print('[{0}/{1}] loss: {2}'.format(step, self.args.num_steps+args.step, loss))
+				loss = self.model.train(inputs, targets, self.args.tfr, self.args.temp)
+				time_elapsed = time.time() - since
+				print('{0} [{1}/{2}] loss: {3}'.format(time_taken(time_elapsed), step, self.args.num_steps+args.step, loss))
 
 				if step >= (self.args.num_steps+args.step):
 					break
@@ -71,6 +77,9 @@ def prepare_output_dir(args):
 	os.makedirs(args.log_dir, exist_ok=True)
 	os.makedirs(args.new_model_dir, exist_ok=True)
 	os.makedirs(args.test_output_dir, exist_ok=True)
+
+	with open(args.log_dir+"/args.txt", "w") as text_file:
+		print("{}".format(args), file=text_file)
 
 
 if __name__ == '__main__':

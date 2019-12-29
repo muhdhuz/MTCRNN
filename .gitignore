@@ -10,3 +10,6 @@ codetest.ipynb
 .ipynb_checkpoints/*
 *.wav
 *.txt
+/figures
+/paper
+cmd.txt

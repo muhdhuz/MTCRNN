@@ -3,7 +3,7 @@
 A generative model for audio that is driven by conditioning at different timescales.  
 Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) repository into the root of this repo.
 
-**Files**  
+**Recommended project structure**  
 - `train.py`: Main script for training and saving model
 - `generate.py` : A script for generating with pre-trained model
 - /network
@@ -12,54 +12,64 @@ Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) rep
     - `model.py` : Calculate loss and optimization, higher level model functions
 - /dataloader
     - `dataloader.py` : Dataset, Dataloading utilities, including calling transforms on data
-    - `transforms.py` : Utilities for data transformations 
+    - `transforms.py` : Utilities for data transformations
+- /myUtils
+    - `myUtils.py` : Utilities for data transformations
+- /paramManager
+    - `paramManager.py` : Utilities for data transformations      
 
 **Dependencies**  
 * PyTorch >= 1.0
-* [paramManager](https://github.com/lonce/paramManager)
+* [paramManager](https://github.com/muhdhuz/paramManager)
 * PySoundfile >= 0.9 for loading audio files
   
 **Authors**  
 * Muhammad Huzaifah
 
 **Acknowledgement**
-* Organisation and functional structure generally inspired by [this repo](https://github.com/golbin/WaveNet).
+* Organisation and functional structure generally inspired by [Golbin's WaveNet repo](https://github.com/golbin/WaveNet).
 
 **To do**  
- - [x] Generation script
- - [ ] More comprehensive saving / logging
- - [ ] Multi-tier conditioning
- - [x] Continue training from checkpoint
+ - [x] Multi-tier conditioning
+ - [ ] Unconditional generation
+ - [ ] Specifying seed audio file from priming/generation
+ - [ ] Random primer
+ - [ ] Transfer learning from a subset of conditions
+
+## Important Config Options
+Each tier is an individual model that is trained independently. First decide which parameters (or audio) are to be generated and which are to be used as conditioning variables.  
+List the generation parameters under **generate** and the corresponding number of channels as **gen_size**. List the conditioning parameters under **prop** and the corresponding number of channels as **cond_size**. Specify the **sample_rate** for the tier. Please consult config file for more options and the below for some recipes to get started.  
 
 ## Training
-**Training sample-level tier (audio + parameters)**  
-List conditioning parameters with **prop** option. **input_size** depends on mulaw channels + conditional features.     
-```bash
-python train.py --param_dir data/param --prop spec_centroid rmse --input_size 258
-```
+![Training](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_generation.png)  
 
 **Training frame-level tier (parameters only)**  
- Reduce **sample_rate** and **seq_len** to appropriate rate, requires **paramonly** option if no audio.  
+Tier 3:    
 ```bash
-python train.py --sample_rate 16 seq_len 8 --param_dir data/param --prop spec_centroid rmse --cond_size  --input_size 2 --paramonly
+python3 train.py --hidden_size 300 --batch_size 64 --param_dir data/param --generate rmse centroid pitch --prop fill --cond_size 1 --gen_size 3 --output_dir tier3 --data_dir data/audio --sample_rate 125 --seq_len 1000 --num_steps 4000 --checkpoint 1000 --tfr 0.9
+```
+Tier 2:    
+```bash
+python3 train.py --hidden_size 500 --batch_size 64 --param_dir data/param --generate mfcc0 mfcc1 mfcc2 mfcc3 mfcc4 mfcc5 mfcc6 mfcc7 mfcc8 mfcc9 mfcc10 mfcc11 mfcc12 --prop rmse centroid pitch --cond_size 3 --gen_size 13 --output_dir tier2 --data_dir data/audio --sample_rate 500 --seq_len 2000 --num_steps 6000 --checkpoint 2000 --tfr 0.9
+```
+**Training sample-level tier (audio + parameters)**  
+If unspecified **generate** option defaults to "audio". Use **gen_size** 1 if output audio are mu-law encoded else number of mu-law channels if using **one-hot** option.     
+```bash
+python3 train.py --hidden_size 800 --batch_size 32 --param_dir data/param --prop mfcc0 mfcc1 mfcc2 mfcc3 mfcc4 mfcc5 mfcc6 mfcc7 mfcc8 mfcc9 mfcc10 mfcc11 mfcc12 --cond_size 13 --gen_size 1 --output_dir tier1 --data_dir data/audio --num_steps 50000 --checkpoint 5000 --tfr 0.9
 ```
 
 ## Generate
+![Generate](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_generation.png) 
+
 Generation has 3 modes of conditioning given by **paramvect** option:  
-* self (default): taken from priming data file  
-* external: manually provide a numpy array of appropriate shape (TO DO) 
-* none: no conditioning  
+* *self* (default): taken from priming data file  
+* *external*: manually provide a numpy array of appropriate shape  
+* *none*: no conditioning (TO TEST)   
 
-**Generate sample-level tier (audio)**  
-Below case will output audio length 16000 samples. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**.   
+**Generate with self conditioning**  
+Below case will output synthesized rmse, spec centroid and pitch, using fill as a conditional control parameter. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**.   
 ```bash
-python generate.py --batch_size 4 --seq_len 18000 --param_dir data/param --prop spec_centroid rmse --input_size 258 --model_dir output/tier1/model --step 100000 --length 16000 --paramvect self
-```
-
-**Generate frame-level tier (parameters)**  
-Again reduce **sample_rate** and **seq_len** to appropriate rate, require **paramonly** flag if no audio.  
-```bash
-python generate.py --sample_rate 16 --batch_size 4 --seq_len 40 --param_dir data/param --prop spec_centroid rmse --input_size 2 --model_dir output/tier2/model --step 50000 --length 35 --paramonly --paramvect none
+python generate.py --hidden_size 300 --batch_size 1 --seq_len 1325 --length 1200 --param_dir data/param --generate rmse centroid pitch --prop fill --cond_size 1 --gen_size 3 --model_dir output/tier1/model --step 4000 --paramvect self --sample_rate 125
 ```
 
 

@@ -1,8 +1,5 @@
 """
-A script for WaveNet training
-
-TO DO:
-- take seed file 16000 in length, use first seq_len to build hidden state, use (length-seq_len) to generate
+A script for generation
 """
 import torch
 import soundfile as sf
@@ -14,6 +11,7 @@ import os
 import network.config as config
 from network.model import CondRNN
 from dataloader.dataloader import DataLoader
+from paramManager.paramManager import paramManager
 
 
 class Generator:
@@ -21,16 +19,15 @@ class Generator:
 		self.args = args
 		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-		if args.paramonly:
-			self.model = CondRNN(args.input_size, args.hidden_size,
-								args.input_size, args.n_layers, self.device,
-								paramonly=args.paramonly,
-								onehot=args.onehot)
-		else:
-			self.model = CondRNN(args.input_size, args.hidden_size,
+		if 'audio' in args.generate:
+			self.model = CondRNN(args.cond_size+args.gen_size, args.hidden_size,
 								args.mulaw_channels, args.n_layers, self.device,
-								paramonly=args.paramonly,
-								onehot=args.onehot)
+								paramonly=False,onehot=args.onehot)
+
+		else:
+			self.model = CondRNN(args.cond_size+args.gen_size, args.hidden_size,
+								args.gen_size, args.n_layers, self.device,
+								paramonly=True,onehot=args.onehot)
 
 		self.model.load(args.model_dir, args.step)
 
@@ -39,10 +36,9 @@ class Generator:
 			args.data_dir = args.seed
 
 		self.data_loader = DataLoader(args.data_dir, args.sample_rate, args.seq_len, args.stride, 
-									paramdir=args.param_dir, prop=args.prop,
+									paramdir=args.param_dir, prop=args.prop, generate=args.generate,
 									mulaw_channels=args.mulaw_channels,
 									batch_size=args.batch_size,
-									paramonly=args.paramonly,
 									onehot=args.onehot)
 
 		#if args.paramvect is not None:
@@ -65,79 +61,77 @@ class Generator:
 
 
 	def _get_seed_from_audio(self, filepath):
-		audio, _ = sf.read(filepath)
-		audio_length = len(audio)
-
-		audio = utils.mu_law_encode(audio, self.args.in_channels)
-		audio = utils.one_hot_encode(audio, self.args.in_channels)
-
-		seed = self._make_seed(audio)
-
-		return self._variable(seed).to(self.device), audio_length
+		self.data_loader = DataLoader(filepath, args.sample_rate, args.seq_len, args.stride, 
+							paramdir=args.param_dir, prop=args.prop, generate=args.generate,
+							mulaw_channels=args.mulaw_channels,
+							batch_size=args.batch_size,
+							onehot=args.onehot)
 
 	def _save_to_audio_file(self, data):
 		for i in range(data.shape[0]):
 		# = data[0].detach().cpu().numpy()
 		#data = utils.one_hot_decode(data, axis=1)
 		#audio = utils.mu_law_decode(data, self.args.in_channels)
-			#print(data[i])
 			sf.write(self.args.out+str(i)+'.wav', data[i], 16000, 'PCM_24')
 			#librosa.output.write_wav(self.args.out+str(i), data[i], self.args.sample_rate)
 			print('Saved wav file as {}'.format(self.args.out+str(i)))
 
 		#return None librosa.get_duration(y=audio, sr=self.args.sample_rate)
 
-	def generate(self):
+	def generate(self,params=None,original_sr=None):
 		outputs = []
+		if self.args.paramvect == 'external':
+			assert params is not None, "Please provide a parameter array for paramvect option external!"
+			assert original_sr is not None, "Please provide the original sample rate of the parameters for paramvect option external!"
+			_,params_re = paramManager.resample(params,original_sr,self.args.sample_rate)
 
-		#print("PA",paramvect.shape)
-		#inputs, audio_length = self._get_seed_from_audio(self.args.seed)
+		if self.args.seed is not None:
+			self._get_seed_from_audio(self.args.seed)
+
 		for inputs, _ in self.data_loader:
-			#print("ORI IN",inputs)
 			input = inputs[:,:self.args.seq_len-self.args.length,:].to(self.device)
-			#print("INPUT",input.shape)
-			#print("INPUT",input)
 			next_input, hidden = self.model.build_hidden_state(input)
-			#print("NEXT INPUT",next_input)
-			for length in range(self.args.length):
 
-				transformed_sample, predicted_sample, hidden = self.model.generate(next_input, hidden)
-				#print("TS",transformed_sample)
-				#print("PS",predicted_sample)
+			for length in range(self.args.length):
+				transformed_sample, predicted_sample, hidden = self.model.generate(next_input,hidden,self.args.temp)
+
 				if predicted_sample.shape[1] > 1:
 					predicted_sample = np.expand_dims(predicted_sample, axis=1) 
 				outputs = np.concatenate((outputs, predicted_sample),axis=1) if len(outputs) else predicted_sample
-				#print("OUTSHAPE",outputs.shape)
 				print('{0}/{1} samples are generated.'.format(outputs.shape[1], self.args.length))
+				
 				if self.args.paramvect == 'self':
-					#paramvect_new = paramvect + 0.00001*length
-					if self.args.onehot:
-						paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.mulaw_channels:]
-					else:
-						paramvect = inputs[:,self.args.seq_len-self.args.length+length,1:]
-					#print("P",paramvect.shape)
-					#print("P",paramvect)
-					#batchparams = np.tile(paramvect_new,(self.args.batch_size,1))
-					#paramvect_tensor = torch.from_numpy(batchparams).type(torch.FloatTensor)
-
+					#if self.args.onehot:
+					#	paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.mulaw_channels:] #can merge this since gen_size will cover mulaw_channels case
+					#else:
+					paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.gen_size:]
 					next_input = torch.cat((transformed_sample,paramvect),dim=1).to(self.device)
+				
+				elif self.args.paramvect == 'external':
+					if length < params_re.shape[1]: 
+						paramvect = params_re[:,length,:]
+					else:
+						paramvect = params_re[:,-1,:] #if paramvect shorter than desired length just keep using the last value 
+					next_input = torch.cat((transformed_sample,torch.from_numpy(paramvect).float()),dim=1).to(self.device)
+
 				elif self.args.paramvect == 'none':
-					next_input = transformed_sample
-				#print("NI",next_input) 
-				#print("NI shape",next_input.shape)
+					next_input = transformed_sample.to(self.device)
+
 			break
-		#outputs = outputs[:, :self.args.length, :]
-		#print(outputs.shape)
-		if not self.args.paramonly:
-			self._save_to_audio_file(outputs)
-			#return outputs, original params, original audio
-			if self.args.onehot:
-				return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.mulaw_channels:], inputs[:,self.args.seq_len-self.args.length:,:self.args.mulaw_channels]
-			else:
-				return outputs, inputs[:,self.args.seq_len-self.args.length:,1:], inputs[:,self.args.seq_len-self.args.length:,0]
+
+		if 'audio' in self.args.generate:
+			self._save_to_audio_file(outputs)		
+
+		if self.args.paramvect == 'self':
+			#return: outputs, original cond params, original generated features
+			return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.gen_size:], inputs[:,self.args.seq_len-self.args.length:,:self.args.gen_size]
+		elif self.args.paramvect == 'external':
+			#return: outputs, original cond params
+			return outputs, params_re
 		else:
-			#return outputs, original params
-			return outputs, inputs[:,self.args.seq_len-self.args.length:,:]
+			#return: outputs
+			return outputs
+
 
 if __name__ == '__main__':
 	args = config.parse_args(is_training=False)

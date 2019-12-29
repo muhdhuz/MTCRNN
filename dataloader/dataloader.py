@@ -119,7 +119,7 @@ def load_sequence(filelist,chooseFileIndex,startoffset,seqLen,sr):
 
 class AudioDataset(data.Dataset):	 
 	def __init__(self, datadir, sr, seqLen, stride, 
-				paramdir=None, prop=None, extension='.wav', 
+				paramdir, prop, generate, extension, 
 				transform=None, param_transform=None, target_transform=None):
 		"""
 		sr: sample rate of audio files in dataset
@@ -141,6 +141,7 @@ class AudioDataset(data.Dataset):
 		self.datadir = datadir
 		self.paramdir= paramdir
 		self.prop = prop
+		self.generate = generate
 		self.fileLen,self.fileDuration,self.totalFileDuration,self.totalSamples,self.srInSec,self.seqLenInSec = dataset_properties(self.filelist,sr,seqLen)
 		self.sr = sr
 		self.seqLen = seqLen
@@ -164,18 +165,34 @@ class AudioDataset(data.Dataset):
 
 		if self.transform is not None:
 			input = self.transform(sequence)
+		
 		if self.target_transform is not None:
 			target = self.target_transform(target)
+		
+		"""
+		#for now if generating audio cannot generate anything else because of softmax output 
+		if len(self.generate) > 1:
+			self.generatelist = [n for n in self.generate if n != 'audio'] #grab the names of the other things to generate less audio
+			pm = paramManager.paramManager(self.datadir, self.paramdir)
+			params = pm.getParams(self.filelist[chooseFileIndex])
+			generatedict = pm.resampleAllParams(params,self.seqLen+1,startoffset,startoffset+self.seqLenInSec,self.generatelist,verbose=False)
+			if self.param_transform is not None:
+				generatetensor = self.param_transform(generatedict)
+				input = torch.cat((input,generatetensor[:-1]),1)
+				target = torch.cat((target, generatetensor[1:]),1)
+		"""
+
 		if self.paramdir is not None:
 			pm = paramManager.paramManager(self.datadir, self.paramdir)
 			params = pm.getParams(self.filelist[chooseFileIndex]) 
 			paramdict = pm.resampleAllParams(params,self.seqLen,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
 			if self.param_transform is not None:
 				paramtensor = self.param_transform(paramdict)
-				input = torch.cat((input,paramtensor),1)  #input dim: (batch,seq,feature)	
+				input = torch.cat((input,paramtensor),1)  #input dim: (batch,seq,feature), batch dimension wrapped in automatically in Dataloader later	
+		
 		else:
 			if self.transform is None:
-				input = torch.from_numpy(sequence).type(torch.FloatTensor)	
+				input = torch.from_numpy(sequence).type(torch.FloatTensor)	#if all else fails
 
 		return input, target
 
@@ -200,7 +217,7 @@ class AudioDataset(data.Dataset):
 
 class ParamDataset(data.Dataset):	 
 	def __init__(self, datadir, sr, seqLen, stride, 
-				paramdir, prop, extension='.wav', 
+				paramdir, prop, generate, extension, 
 				param_transform=None):
 		"""
 		sr: standardized sample rate of parameters in dataset. For parameters with different sr, will be resampled to a common value. 
@@ -222,6 +239,7 @@ class ParamDataset(data.Dataset):
 		self.datadir = datadir
 		self.paramdir= paramdir
 		self.prop = prop
+		self.generate = generate
 		self.fileLen,self.fileDuration,self.totalFileDuration,self.totalSamples,self.srInSec,self.seqLenInSec = dataset_properties(self.filelist,sr,seqLen)
 		self.sr = sr
 		self.seqLen = seqLen
@@ -238,11 +256,14 @@ class ParamDataset(data.Dataset):
 		
 		pm = paramManager.paramManager(self.datadir, self.paramdir)
 		params = pm.getParams(self.filelist[chooseFileIndex]) 
-		paramdict = pm.resampleAllParams(params,self.seqLen,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
+		paramdict = pm.resampleAllParams(params,self.seqLen+1,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
+		generatedict = pm.resampleAllParams(params,self.seqLen+1,startoffset,startoffset+self.seqLenInSec,self.generate,verbose=False)
 
-		paramtensor = self.param_transform(paramdict)
-		input = paramtensor[:-1]
-		target = paramtensor[1:]
+		paramtensor = self.param_transform(paramdict) #tensor containing conditional params
+		generatetensor = self.param_transform(generatedict) #tensor containing params to be generated
+		fulltensor = torch.cat((generatetensor,paramtensor),1) 
+		input = fulltensor[:-1]
+		target = generatetensor[1:]
 
 		return input, target
 
@@ -271,35 +292,37 @@ class ParamDataset(data.Dataset):
 
 class DataLoader(data.DataLoader):
 	def __init__(self, datadir, sr=16000, seqLen=512, stride=1, 
-				paramdir=None, prop=None, extension='.wav',
+				paramdir=None, prop=None, generate=None, extension='.wav',
 				mulaw_channels=256,
-				batch_size=1, shuffle=True, num_workers=4, paramonly=False, onehot=False):
+				batch_size=1, shuffle=True, num_workers=4, onehot=False):
 
+		assert set(prop).isdisjoint(generate), 'Cannot repeat keywords in both prop and generate!'
 		param_transform_list = []
 		#if 'spec_centroid' in prop:
 		#	param_transform_list.append(tr.normalizeDim('spec_centroid',0,8000))  #nyquist sr/2 
 		
 		param_transform_list.append(tr.dic2tensor(torch.FloatTensor))
 
-		if paramonly:
-			assert paramdir is not None, 'Please provide [paramdir]!'
-			assert prop is not None, 'Please provide parameters to be used [prop]!'
-
-			self.dataset = ParamDataset(datadir, sr, seqLen, stride,
-					paramdir, prop, extension,
-					param_transform=transform.Compose(param_transform_list))
-
-		else:
+		if 'audio' in generate:
+			assert len([generate]) == 1, 'Audio generation is incompatiple with simultaneous generation of other parameters!'
 			if onehot:
 				audio_transform_list =  [tr.mulawEncode(mulaw_channels,norm=False),tr.onehotEncode(mulaw_channels),tr.array2tensor(torch.FloatTensor)]
 			else:
 				audio_transform_list =  [tr.mulawEncode(mulaw_channels,norm=True),tr.array2tensor(torch.FloatTensor)]
 			
 			self.dataset = AudioDataset(datadir, sr, seqLen, stride,
-					paramdir, prop, extension,
+					paramdir, prop, generate, extension,
 					transform=transform.Compose(audio_transform_list),
 					param_transform=transform.Compose(param_transform_list),
 					target_transform=transform.Compose([tr.mulawEncode(mulaw_channels),tr.array2tensor(torch.LongTensor)]))
+
+		else:
+			assert paramdir is not None, 'Please provide [paramdir]!'
+			assert prop is not None, 'Please provide parameters to be used [prop]!'
+
+			self.dataset = ParamDataset(datadir, sr, seqLen, stride,
+					paramdir, prop, generate, extension,
+					param_transform=transform.Compose(param_transform_list))
 
 		super(DataLoader, self).__init__(self.dataset, batch_size, shuffle, num_workers=num_workers)
 
