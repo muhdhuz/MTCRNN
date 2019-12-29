@@ -54,7 +54,8 @@ python3 train.py --hidden_size 500 --batch_size 64 --param_dir data/param --gene
 ```  
 
 **Training sample-level tier (audio + parameters)**  
-If unspecified, **generate** option defaults to "audio". Use **gen_size** 1 if output audio are mu-law encoded else number of mu-law channels if using **one-hot** option.     
+If unspecified, **generate** option defaults to "audio". Use **gen_size** 1 if output audio are mu-law encoded else number of mu-law channels if using **one-hot** option.  
+Tier 1:     
 ```bash
 python3 train.py --hidden_size 800 --batch_size 32 --param_dir data/param --prop mfcc0 mfcc1 mfcc2 mfcc3 mfcc4 mfcc5 mfcc6 mfcc7 mfcc8 mfcc9 mfcc10 mfcc11 mfcc12 --cond_size 13 --gen_size 1 --output_dir tier1 --data_dir data/audio --num_steps 50000 --checkpoint 5000 --tfr 0.9
 ```
@@ -68,7 +69,7 @@ Generation has 3 modes of conditioning given by **paramvect** option:
 * *none*: no conditioning (TO TEST)   
 
 **Generate with self conditioning**  
-Below case will output synthesized rmse, spec centroid and pitch, using fill as a conditional control parameter. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**. Since self conditioning specified real fill values are taken randomly from dataset or seed audio file. 
+Below case will output synthesized rmse, spec centroid and pitch, using fill as a conditional control parameter. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**. Since self conditioning is specified, real fill values are taken randomly from the dataset or seed audio file. 
 ```bash
 python3 generate.py --hidden_size 300 --batch_size 1 --seq_len 1325 --length 1200 --param_dir data/param --generate rmse centroid pitch --prop fill --cond_size 1 --gen_size 3 --model_dir output/tier3/model --step 4000 --paramvect self --sample_rate 125 --save
 ```  
