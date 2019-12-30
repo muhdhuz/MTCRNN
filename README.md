@@ -31,14 +31,14 @@ Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) rep
 
 **To do**  
  - [x] Multi-tier conditioning
- - [ ] Unconditional generation
+ - [x] Unconditional generation
  - [ ] Specifying seed audio file from priming/generation
  - [ ] Random primer
  - [ ] Transfer learning from a subset of conditions
 
 ## Important Config Options
 Each tier is an individual model that is trained independently. First decide which parameters (or audio) are to be generated and which are to be used as conditioning variables.  
-List the generation parameters under **generate** and the corresponding number of channels as **gen_size**. List the conditioning parameters under **prop** and the corresponding number of channels as **cond_size**. Specify the **sample_rate** for the tier. Please consult config file for more options and the below for some recipes to get started.  
+List the generation parameters under **generate** and the corresponding number of input channels as **gen_size**. List the conditioning parameters under **prop** and the corresponding number of channels as **cond_size**. Specify the **sample_rate** for the tier. Please consult config file for more options and the below for some recipes to get started.  
 
 ## Training
 ![Training](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_training.png) 
@@ -54,7 +54,7 @@ python3 train.py --hidden_size 500 --batch_size 64 --param_dir data/param --gene
 ```  
 
 **Training sample-level tier (audio + parameters)**  
-If unspecified, **generate** option defaults to "audio". Use **gen_size** 1 if output audio are mu-law encoded else number of mu-law channels if using **one-hot** option.  
+If unspecified, **generate** option defaults to "audio". Use **gen_size** 1 if output audio are mu-law encoded else number of mu-law channels (default: 256) if using **one-hot** option.  
 Tier 1:     
 ```bash
 python3 train.py --hidden_size 800 --batch_size 32 --param_dir data/param --prop mfcc0 mfcc1 mfcc2 mfcc3 mfcc4 mfcc5 mfcc6 mfcc7 mfcc8 mfcc9 mfcc10 mfcc11 mfcc12 --cond_size 13 --gen_size 1 --output_dir tier1 --data_dir data/audio --num_steps 50000 --checkpoint 5000 --tfr 0.9
@@ -75,9 +75,13 @@ python3 generate.py --hidden_size 300 --batch_size 1 --seq_len 1325 --length 120
 ```  
 
 **Generate with external conditioning**  
-Below case will output synthesized rmse, spec centroid and pitch, using fill as a conditional control parameter. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**. For external conditioning, require additonal keywords **external array** pointing to a saved numpy array .npy file containing the conditioning values and **external_sr**, the original sample rate for this set of conditional values.       
+Below case will output synthesized rmse, spec centroid and pitch, using fill as a conditional control parameter. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**. For external conditioning, require additonal keywords **external array** pointing to a saved numpy array .npy file containing the conditioning values and **external_sr**, the original sample rate for this set of conditional values. Values will be upsampled automatically from **external_sr** to **sample_rate**.         
 ```bash
 python3 generate.py --hidden_size 300 --batch_size 1 --seq_len 1325 --length 1200 --param_dir data/param --generate rmse centroid pitch --prop fill --cond_size 1 --gen_size 3 --model_dir output/tier3/model --step 4000 --paramvect external --sample_rate 125 --external_array fill.npy --external_sr 63 --out test_array --save
 ```
 
-
+**Unconditional generation**  
+For **paramvect** "none", leave **prop** as blank and set **cond_size** to 0.  
+```bash
+python3 generate.py --hidden_size 300 --batch_size 1 --seq_len 1325 --length 1200 --param_dir data/param --generate rmse centroid pitch --cond_size 0 --gen_size 3 --model_dir output/tier3/model --step 4000 --paramvect none --sample_rate 125 --save
+```

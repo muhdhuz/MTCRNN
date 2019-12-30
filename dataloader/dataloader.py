@@ -15,7 +15,7 @@ filenames will be contained within a csv file (1 group per line), or directly lo
 	convert audio to mu-law
 	convert mu-law + params to tensor
 
-@muhammad huzaifah 27/08/2019
+@muhammad huzaifah 29/12/2019
 
 Notes: Eventually hope to migrate to torchaudio for loading/transformations
 		Currently torchaudio dependency libsox is broken for windows
@@ -182,17 +182,12 @@ class AudioDataset(data.Dataset):
 				target = torch.cat((target, generatetensor[1:]),1)
 		"""
 
-		if self.paramdir is not None:
+		if self.paramdir is not None and len(self.prop)>0:
 			pm = paramManager.paramManager(self.datadir, self.paramdir)
 			params = pm.getParams(self.filelist[chooseFileIndex]) 
 			paramdict = pm.resampleAllParams(params,self.seqLen,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
-			if self.param_transform is not None:
-				paramtensor = self.param_transform(paramdict)
-				input = torch.cat((input,paramtensor),1)  #input dim: (batch,seq,feature), batch dimension wrapped in automatically in Dataloader later	
-		
-		else:
-			if self.transform is None:
-				input = torch.from_numpy(sequence).type(torch.FloatTensor)	#if all else fails
+			paramtensor = self.param_transform(paramdict)
+			input = torch.cat((input,paramtensor),1)  #input dim: (batch,seq,feature), batch dimension wrapped in automatically in Dataloader later			
 
 		return input, target
 
@@ -255,13 +250,16 @@ class ParamDataset(data.Dataset):
 			chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
 		
 		pm = paramManager.paramManager(self.datadir, self.paramdir)
-		params = pm.getParams(self.filelist[chooseFileIndex]) 
-		paramdict = pm.resampleAllParams(params,self.seqLen+1,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
+		params = pm.getParams(self.filelist[chooseFileIndex])
 		generatedict = pm.resampleAllParams(params,self.seqLen+1,startoffset,startoffset+self.seqLenInSec,self.generate,verbose=False)
-
-		paramtensor = self.param_transform(paramdict) #tensor containing conditional params
 		generatetensor = self.param_transform(generatedict) #tensor containing params to be generated
-		fulltensor = torch.cat((generatetensor,paramtensor),1) 
+		if len(self.prop)>0: 
+			paramdict = pm.resampleAllParams(params,self.seqLen+1,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
+			paramtensor = self.param_transform(paramdict) #tensor containing conditional params
+			fulltensor = torch.cat((generatetensor,paramtensor),1)
+		else:
+			fulltensor = generatetensor
+
 		input = fulltensor[:-1]
 		target = generatetensor[1:]
 
@@ -282,7 +280,7 @@ class ParamDataset(data.Dataset):
 		print('loading part of file:',self.filelist[chooseFileIndex],'starting at',startoffset)
 		pm = paramManager.paramManager(self.datadir, self.paramdir)	
 		params = pm.getParams(self.filelist[chooseFileIndex]) 
-		paramdict = pm.resampleAllParams(params,self.seqLen,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
+		paramdict = pm.resampleAllParams(params,self.seqLen,startoffset,startoffset+self.seqLenInSec,self.generate,verbose=False)
 
 		if transform:
 			trans_sequence = self.param_transform(paramdict)
@@ -318,7 +316,7 @@ class DataLoader(data.DataLoader):
 
 		else:
 			assert paramdir is not None, 'Please provide [paramdir]!'
-			assert prop is not None, 'Please provide parameters to be used [prop]!'
+			#assert prop is not None, 'Please provide parameters to be used [prop]!'
 
 			self.dataset = ParamDataset(datadir, sr, seqLen, stride,
 					paramdir, prop, generate, extension,

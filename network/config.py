@@ -18,7 +18,7 @@ parser.add_argument('--batch_size', type=int, default=16, help='minibatch size f
 
 #data arguments
 parser.add_argument('--param_dir', type=str, default=None, help='parameter file directory ')
-parser.add_argument('--prop', type=str, default=None, nargs='+', help='parameters to be used as conditioning')
+parser.add_argument('--prop', type=str, default=[], nargs='+', help='parameters to be used as conditioning')
 parser.add_argument('--cond_size', type=int, default=16, help='input vector size: conditional vector')
 parser.add_argument('--generate', type=str, default=['audio'], nargs='+', help='parameters/audio to be generated, defaults audio')
 parser.add_argument('--gen_size', type=int, default=1, help='input vector size: generated features, if audio only = 1 or one-hot channels')
