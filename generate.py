@@ -61,22 +61,18 @@ class Generator:
 
 
 	def _get_seed_from_audio(self, filepath):
-		self.data_loader = DataLoader(filepath, args.sample_rate, args.seq_len, args.stride, 
-							paramdir=args.param_dir, prop=args.prop, generate=args.generate,
-							mulaw_channels=args.mulaw_channels,
-							batch_size=args.batch_size,
-							onehot=args.onehot)
+		self.data_loader = DataLoader(filepath, self.args.sample_rate, self.args.seq_len, self.args.stride, 
+							paramdir=self.args.param_dir, prop=self.args.prop, generate=self.args.generate,
+							mulaw_channels=self.args.mulaw_channels,
+							batch_size=self.args.batch_size,
+							onehot=self.args.onehot)
+
 
 	def _save_to_audio_file(self, data):
 		for i in range(data.shape[0]):
-		# = data[0].detach().cpu().numpy()
-		#data = utils.one_hot_decode(data, axis=1)
-		#audio = utils.mu_law_decode(data, self.args.in_channels)
 			sf.write(self.args.out+str(i)+'.wav', data[i], 16000, 'PCM_24')
-			#librosa.output.write_wav(self.args.out+str(i), data[i], self.args.sample_rate)
 			print('Saved wav file as {}'.format(self.args.out+str(i)))
 
-		#return None librosa.get_duration(y=audio, sr=self.args.sample_rate)
 
 	def generate(self,params=None,original_sr=None):
 		outputs = []
@@ -133,7 +129,8 @@ class Generator:
 
 		if self.args.paramvect == 'self':
 			#return: outputs, original cond params, original generated features
-			return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.gen_size:], inputs[:,self.args.seq_len-self.args.length:,:self.args.gen_size]
+			#return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.gen_size:], inputs[:,self.args.seq_len-self.args.length:,:self.args.gen_size]
+			return outputs, inputs[:,:,self.args.gen_size:], inputs[:,:,:self.args.gen_size]
 		elif self.args.paramvect == 'external':
 			#return: outputs, original cond params
 			return outputs, params_re

@@ -7,11 +7,11 @@ Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) rep
 - `train.py`: Main script for training and saving model
 - `generate.py` : A script for generating with pre-trained model
 - /network
-    - `config.py` : Training options
+    - `config.py` : Training/generation options
     - `networks.py` : Modules for network architecture
     - `model.py` : Calculate loss and optimization, higher level model functions
 - /dataloader
-    - `dataloader.py` : Dataset, Dataloading utilities, including calling transforms on data
+    - `dataloader.py` : Preparing dataset, dataloading utilities, including calling transforms on data
     - `transforms.py` : Utilities for data transformations
 - /myUtils
     - `myUtils.py` : Some useful routines
@@ -32,9 +32,9 @@ Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) rep
 **To do**  
  - [x] Multi-tier conditioning
  - [x] Unconditional generation
- - [ ] Specifying seed audio file from priming/generation
+ - [x] Specifying seed audio file from priming/generation
  - [ ] Random primer
- - [ ] Transfer learning from a subset of conditions
+ - [ ] Transfer learning for a subset of trained conditions
 
 ## Important Config Options
 Each tier is an individual model that is trained independently. First decide which parameters (or audio) are to be generated and which are to be used as conditioning variables.  
@@ -54,7 +54,7 @@ python3 train.py --hidden_size 500 --batch_size 64 --param_dir data/param --gene
 ```  
 
 **Training sample-level tier (audio + parameters)**  
-If unspecified, **generate** option defaults to "audio". Use **gen_size** 1 if output audio are mu-law encoded else number of mu-law channels (default: 256) if using **one-hot** option.  
+If unspecified, **generate** option defaults to "audio". Use **gen_size** 1 if output audio are mu-law encoded else number of mu-law channels (default: 256) if using **one-hot** option. Currently audio generation cannot be mixed with generation of other parameters but parameters can still be used as conditional inputs.    
 Tier 1:     
 ```bash
 python3 train.py --hidden_size 800 --batch_size 32 --param_dir data/param --prop mfcc0 mfcc1 mfcc2 mfcc3 mfcc4 mfcc5 mfcc6 mfcc7 mfcc8 mfcc9 mfcc10 mfcc11 mfcc12 --cond_size 13 --gen_size 1 --output_dir tier1 --data_dir data/audio --num_steps 50000 --checkpoint 5000 --tfr 0.9
@@ -66,7 +66,7 @@ python3 train.py --hidden_size 800 --batch_size 32 --param_dir data/param --prop
 Generation has 3 modes of conditioning given by **paramvect** option:  
 * *self* (default): taken from priming data file  
 * *external*: manually provide a numpy array of shape [batch,length,features]  
-* *none*: no conditioning (TO TEST)   
+* *none*: no conditioning    
 
 **Generate with self conditioning**  
 Below case will output synthesized rmse, spec centroid and pitch, using fill as a conditional control parameter. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**. Since self conditioning is specified, real fill values are taken randomly from the dataset or seed audio file. 
@@ -75,7 +75,7 @@ python3 generate.py --hidden_size 300 --batch_size 1 --seq_len 1325 --length 120
 ```  
 
 **Generate with external conditioning**  
-Below case will output synthesized rmse, spec centroid and pitch, using fill as a conditional control parameter. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**. For external conditioning, require additonal keywords **external array** pointing to a saved numpy array .npy file containing the conditioning values and **external_sr**, the original sample rate for this set of conditional values. Values will be upsampled automatically from **external_sr** to **sample_rate**.         
+Below case will output synthesized rmse, spec centroid and pitch, using fill as a conditional control parameter. (seq_len-length) samples are used for priming. Requires a trained model found in **model_dir** and defined by **step**. External conditioning requires additional keywords **external array** pointing to a saved numpy array .npy file containing the conditioning values and **external_sr**, the original sample rate for this set of conditional values. Values will be upsampled automatically from **external_sr** to **sample_rate**.         
 ```bash
 python3 generate.py --hidden_size 300 --batch_size 1 --seq_len 1325 --length 1200 --param_dir data/param --generate rmse centroid pitch --prop fill --cond_size 1 --gen_size 3 --model_dir output/tier3/model --step 4000 --paramvect external --sample_rate 125 --external_array fill.npy --external_sr 63 --out test_array --save
 ```
