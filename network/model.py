@@ -124,7 +124,7 @@ class CondRNN:
 
 		outputs, hidden = self.net(inputs,hidden,inputs.shape[0])
 		if self.paramonly:
-			next_input = outputs.detach()
+			next_input = outputs.detach().cpu()
 			predicted_sample = outputs.detach().cpu().numpy()
 		else:
 			next_input, predicted_sample = self.sample(outputs,temperature)
