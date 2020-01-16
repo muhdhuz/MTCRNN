@@ -5,6 +5,7 @@ import torch
 import soundfile as sf
 #import librosa 
 import datetime
+import time
 import numpy as np
 import os
 
@@ -131,6 +132,7 @@ class Generator:
 				break
 
 			progress.done()
+			time.sleep(0.5)
 			print('Generate took {0} seconds'.format(datetime.datetime.now() - start_time))
 			if 'audio' in self.args.generate:
 				self._save_to_audio_file(outputs)
