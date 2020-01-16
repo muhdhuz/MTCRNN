@@ -4,6 +4,7 @@ import numpy as np
 import glob
 import os
 import sys
+import re
 
 #======================================================================
 
@@ -111,6 +112,47 @@ def mydate():
 	return (datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 
+class ProgressBar(object):
+	"""incrementing progress bar
+	Credits to: Romuald Brunet from https://stackoverflow.com/questions/3160699/python-progress-bar"""
+	DEFAULT = 'Progress: %(bar)s %(percent)3d%%'
+	FULL = '%(bar)s %(current)d/%(total)d (%(percent)3d%%) %(remaining)d to go'
+
+	def __init__(self, total, width=40, fmt=DEFAULT, symbol='=',
+				 output=sys.stderr):
+		assert len(symbol) == 1
+
+		self.total = total
+		self.width = width
+		self.symbol = symbol
+		self.output = output
+		self.fmt = re.sub(r'(?P<name>%\(.+?\))d',
+			r'\g<name>%dd' % len(str(total)), fmt)
+
+		self.current = 0
+
+	def __call__(self):
+		percent = self.current / float(self.total)
+		size = int(self.width * percent)
+		remaining = self.total - self.current
+		bar = '[' + self.symbol * size + ' ' * (self.width - size) + ']'
+
+		args = {
+			'total': self.total,
+			'bar': bar,
+			'current': self.current,
+			'percent': percent * 100,
+			'remaining': remaining
+		}
+		print('\r' + self.fmt % args, file=self.output, end='')
+		self.current += 1
+
+	def done(self):
+		self.current = self.total
+		self()
+		print('', file=self.output)
+
+
 #file/folder manipulation
 #*************************************
 def mostRecent(strPat) :
@@ -183,7 +225,6 @@ def find_classes(dir):
 def extract_nsynth_pitch(filename):
 	"""function to extract midi pitch from nsynth dataset base filenames
 	keyboard_acoustic_000-059-075.wav -> 59""" 
-	import re
 	n = re.findall(r'(?<=-).*?(?=-)', filename)[0]
 	if (n[0]=='0') :
 		midinum=int(n[1:])
@@ -194,7 +235,6 @@ def extract_nsynth_pitch(filename):
 def extract_nsynth_instrument(filename):
 	"""function to extract midi pitch from nsynth dataset base filenames
 	keyboard_acoustic_000-059-075.wav -> keyboard_acoustic""" 
-	import re
 	n = re.search('(.*?_.*?)_', filename).group(1)
 	return n
 
@@ -235,5 +275,3 @@ def ScaleAudio_all(indir,outdir,scaling_function,*args,**kwargs):
 				if not os.path.isdir(structure):
 					os.mkdir(structure)
 				ScaleAudio(os.path.join(dirpath, name),structure,scaling_function,*args,**kwargs)
-
-

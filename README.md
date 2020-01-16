@@ -13,7 +13,7 @@ Before running, copy [paramManager](https://github.com/muhdhuz/paramManager) rep
 - /dataloader
     - `dataloader.py` : Preparing dataset, dataloading utilities, including calling transforms on data
     - `transforms.py` : Utilities for data transformations
-- /myUtils
+- /utils
     - `myUtils.py` : Some useful routines
 - /paramManager
     - `paramManager.py` : A library to handle param files, do resampling     

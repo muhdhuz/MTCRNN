@@ -12,12 +12,15 @@ import network.config as config
 from network.model import CondRNN
 from dataloader.dataloader import DataLoader
 from paramManager.paramManager import paramManager
+from utils.myUtils import ProgressBar
 
 
 class Generator:
 	def __init__(self, args):
 		self.args = args
 		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+		if torch.cuda.is_available():
+			torch.cuda.empty_cache()
 
 		if 'audio' in args.generate:
 			self.model = CondRNN(args.cond_size+args.gen_size, args.hidden_size,
@@ -75,68 +78,76 @@ class Generator:
 
 
 	def generate(self,params=None,original_sr=None):
-		outputs = []
-		if self.args.paramvect == 'external':
-			if params is None:
-				params = self.param_array
-				assert params is not None, "Please provide a parameter array for paramvect option external!" 
-			if original_sr is None:
-				original_sr = self.args.external_sr
-				assert original_sr is not None, "Please provide the original sample rate of the parameters for paramvect option external!"
-			_,params_re = paramManager.resample(params,original_sr,self.args.sample_rate)
+		start_time = datetime.datetime.now()
+		with torch.no_grad():
+			outputs = []
+			if self.args.paramvect == 'external':
+				if params is None:
+					params = self.param_array
+					assert params is not None, "Please provide a parameter array for paramvect option external!" 
+				if original_sr is None:
+					original_sr = self.args.external_sr
+					assert original_sr is not None, "Please provide the original sample rate of the parameters for paramvect option external!"
+				_,params_re = paramManager.resample(params,original_sr,self.args.sample_rate)
 
-		if self.args.seed is not None:
-			self._get_seed_from_audio(self.args.seed)
+			if self.args.seed is not None:
+				self._get_seed_from_audio(self.args.seed)
 
-		for inputs, _ in self.data_loader:
-			print('priming...')
-			input = inputs[:,:self.args.seq_len-self.args.length,:].to(self.device)
-			next_input, hidden = self.model.build_hidden_state(input)
-			print('DONE')
+			for inputs, _ in self.data_loader:
+				print('priming...')
+				input = inputs[:,:self.args.seq_len-self.args.length,:].to(self.device)
+				next_input, hidden = self.model.build_hidden_state(input)
+				print('DONE')
+				progress = ProgressBar(self.args.length, fmt=ProgressBar.FULL)
 
-			for length in range(self.args.length):
-				transformed_sample, predicted_sample, hidden = self.model.generate(next_input,hidden,self.args.temp)
+				for length in range(self.args.length):
+					transformed_sample, predicted_sample, hidden = self.model.generate(next_input,hidden,self.args.temp)
 
-				if predicted_sample.shape[1] > 1:
-					predicted_sample = np.expand_dims(predicted_sample, axis=1) 
-				outputs = np.concatenate((outputs, predicted_sample),axis=1) if len(outputs) else predicted_sample
-				print('{0}/{1} samples are generated.'.format(outputs.shape[1], self.args.length))
-				
-				if self.args.paramvect == 'self':
-					#if self.args.onehot:
-					#	paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.mulaw_channels:] #can merge this since gen_size will cover mulaw_channels case
-					#else:
-					paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.gen_size:]
-					next_input = torch.cat((transformed_sample,paramvect),dim=1).to(self.device)
-				
-				elif self.args.paramvect == 'external':
-					if length < params_re.shape[1]: 
-						paramvect = params_re[:,length,:]
-					else:
-						paramvect = params_re[:,-1,:] #if paramvect shorter than desired length just keep using the last value 
-					next_input = torch.cat((transformed_sample,torch.from_numpy(paramvect).float()),dim=1).to(self.device)
+					if predicted_sample.shape[1] > 1:
+						predicted_sample = np.expand_dims(predicted_sample, axis=1) 
+					outputs = np.concatenate((outputs, predicted_sample),axis=1) if len(outputs) else predicted_sample
+					#print('{0}/{1} samples are generated.'.format(outputs.shape[1], self.args.length))
+					progress()
+					#print(torch.cuda.memory_allocated())
+					
+					
+					if self.args.paramvect == 'self':
+						#if self.args.onehot:
+						#	paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.mulaw_channels:] #can merge this since gen_size will cover mulaw_channels case
+						#else:
+						paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.gen_size:]
+						next_input = torch.cat((transformed_sample,paramvect),dim=1).to(self.device)
+					
+					elif self.args.paramvect == 'external':
+						if length < params_re.shape[1]: 
+							paramvect = params_re[:,length,:]
+						else:
+							paramvect = params_re[:,-1,:] #if paramvect shorter than desired length just keep using the last value 
+						next_input = torch.cat((transformed_sample,torch.from_numpy(paramvect).float()),dim=1).to(self.device)
 
-				elif self.args.paramvect == 'none':
-					next_input = transformed_sample.to(self.device)
+					elif self.args.paramvect == 'none':
+						next_input = transformed_sample.to(self.device)
 
-			break
+				break
 
-		if 'audio' in self.args.generate:
-			self._save_to_audio_file(outputs)
-		else:
-			if self.args.save:
-				np.save(self.args.out,outputs)
+			progress.done()
+			print('Generate took {0} seconds'.format(datetime.datetime.now() - start_time))
+			if 'audio' in self.args.generate:
+				self._save_to_audio_file(outputs)
+			else:
+				if self.args.save:
+					np.save(self.args.out,outputs)
 
-		if self.args.paramvect == 'self':
-			#return: outputs, original cond params, original generated features
-			#return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.gen_size:], inputs[:,self.args.seq_len-self.args.length:,:self.args.gen_size]
-			return outputs, inputs[:,:,self.args.gen_size:], inputs[:,:,:self.args.gen_size]
-		elif self.args.paramvect == 'external':
-			#return: outputs, original cond params
-			return outputs, params_re
-		else:
-			#return: outputs
-			return outputs
+			if self.args.paramvect == 'self':
+				#return: outputs, original cond params, original generated features
+				#return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.gen_size:], inputs[:,self.args.seq_len-self.args.length:,:self.args.gen_size]
+				return outputs, inputs[:,:,self.args.gen_size:], inputs[:,:,:self.args.gen_size]
+			elif self.args.paramvect == 'external':
+				#return: outputs, original cond params
+				return outputs, params_re
+			else:
+				#return: outputs
+				return outputs
 
 
 if __name__ == '__main__':
@@ -145,9 +156,5 @@ if __name__ == '__main__':
 
 	generator = Generator(args)
 
-	start_time = datetime.datetime.now()
-
 	generator.generate()
-
-	print('Generate took {0} seconds'.format(datetime.datetime.now() - start_time))
 
