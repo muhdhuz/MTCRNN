@@ -22,9 +22,9 @@ parser.add_argument('--prop', type=str, default=[], nargs='+', help='parameters 
 parser.add_argument('--cond_size', type=int, default=16, help='input vector size: conditional vector')
 parser.add_argument('--generate', type=str, default=['audio'], nargs='+', help='parameters/audio to be generated, defaults audio')
 parser.add_argument('--gen_size', type=int, default=1, help='input vector size: generated features, if audio only = 1 or one-hot channels')
-#parser.add_argument('--paramonly', action='store_true', help='whether training only on parameters (no audio)')
 parser.add_argument('--onehot', action='store_true', help='whether to transform mulaw to onehot prior to input')
-parser.add_argument('--temp', type=float, default=0.9, help='temperature param for sampling')
+parser.add_argument('--temp', type=float, default=1.0, help='temperature param for sampling randomness')
+#parser.add_argument('--no_shuffle', action='store_false', help='whether to shuffle (randomize) data loading (default:shuffle)')
 
 def parse_args(is_training=True):
     if is_training:
@@ -43,6 +43,7 @@ def parse_args(is_training=True):
         group = parser.add_mutually_exclusive_group()
         group.add_argument('--seed', type=str, default=None, help='a seed file to generate sound')
         group.add_argument('--data_dir', type=str, default='./data/audio', help='a test data directory to generate sound')
+        parser.add_argument('--seed_start', type=int, default=0, help='starting sample value to load data if seed is specified')
         parser.add_argument('--paramvect',default='self', const='self', nargs='?',choices=('self', 'external','none'),
                     help='source of paramvect. self(default): taken from data file, external: taken from numpy array, none: no conditioning')
         parser.add_argument('--out', type=str, default='generated', help='output file name which is generated')

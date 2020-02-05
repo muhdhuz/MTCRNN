@@ -85,6 +85,7 @@ class CondRNN:
 		return sequence_loss/inputs.shape[1] #return average sample loss 
 
 	def build_hidden_state(self, inputs):
+		"""build hidden state during priming"""
 		hidden = self.net.init_hidden(inputs.shape[0]).to(self.device)
 		
 		if inputs.shape[1] > 1: #if priming with something with len>1
@@ -100,7 +101,7 @@ class CondRNN:
 		#mulaw_output2 = topi.detach().cpu().numpy()
 
 		out_weights = log_output.div(temperature).exp()
-		idx = torch.multinomial(out_weights, 1)
+		idx = torch.multinomial(out_weights, 1) #categorical distribution
 		mulaw_output = idx.detach().cpu().numpy()
 
 		#encode for next step
@@ -121,8 +122,7 @@ class CondRNN:
 		:param inputs: Tensor[batch, timestep, channels]
 		:return: Tensor[batch, timestep, channels]
 		"""
-
-		outputs, hidden = self.net(inputs,hidden,inputs.shape[0])
+		outputs, hidden = self.net(inputs,hidden,inputs.shape[0],beta=temperature)
 		if self.paramonly:
 			next_input = outputs.detach().cpu()
 			predicted_sample = outputs.detach().cpu().numpy()

@@ -108,18 +108,19 @@ def choose_sequence_notsame(index,fileDuration,srInSec,stride):
 	startoffset = timestamp - (cummulduration - fileDuration[chooseFileIndex]) #will load at this start time	
 	return chooseFileIndex,startoffset
 	
-def load_sequence(filelist,chooseFileIndex,startoffset,seqLen,sr):
+def load_sequence(filelist,chooseFileIndex,startoffset,frames,sr):
 	"""load the correct section of audio. If len of audio < seqLen+1 (e.g. sections at the end of the file), then draw another section.
-	We draw 1 sample more than seqLen so can take input=y[:-1] and target=y[1:]"""
-	y,_ = sf.read(filelist[chooseFileIndex],frames=seqLen+1,start=round(startoffset*sr))			
-	if len(y) < seqLen+1:
-		y = None
+	if is_seeded, we draw 1 sample more than seqLen so can take input=y[:-1] and target=y[1:]
+	else just draw seqLen (for example if using for generation)"""
+	y,_ = sf.read(filelist[chooseFileIndex],frames=frames,start=round(startoffset*sr))			
+	#if len(y) < seqLen+1:
+	#	y = None
 	return y
 
 
 class AudioDataset(data.Dataset):	 
 	def __init__(self, datadir, sr, seqLen, stride, 
-				paramdir, prop, generate, extension, 
+				paramdir, prop, generate, extension, is_seeded, load_start, 
 				transform=None, param_transform=None, target_transform=None):
 		"""
 		sr: sample rate of audio files in dataset
@@ -142,6 +143,8 @@ class AudioDataset(data.Dataset):
 		self.paramdir= paramdir
 		self.prop = prop
 		self.generate = generate
+		self.is_seeded = is_seeded
+		self.load_start = load_start
 		self.fileLen,self.fileDuration,self.totalFileDuration,self.totalSamples,self.srInSec,self.seqLenInSec = dataset_properties(self.filelist,sr,seqLen)
 		self.sr = sr
 		self.seqLen = seqLen
@@ -150,18 +153,54 @@ class AudioDataset(data.Dataset):
 		self.param_transform = param_transform
 		self.target_transform = target_transform
 		self.indexLen = create_sampling_index(self.totalSamples,self.stride)
-			
+
+
 	def __getitem__(self,index):
 		chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-		whole_sequence = load_sequence(self.filelist,chooseFileIndex,startoffset,self.seqLen,self.sr)
-		while whole_sequence is None: #if len(whole_sequence) < self.seqLen+1, pick another random section
-			index = np.random.randint(self.indexLen)
-			chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-			whole_sequence = load_sequence(self.filelist,chooseFileIndex,startoffset,self.seqLen,self.sr) 
-		assert len(whole_sequence) == self.seqLen+1, str(len(whole_sequence))
+		if self.is_seeded:
+			startoffset = self.load_start/self.sr
+			load_length = self.seqLen
+		else:
+			load_length = self.seqLen+1
+			while self.fileDuration[chooseFileIndex] < (startoffset + self.seqLenInSec + 1/self.sr):
+				index = np.random.randint(self.indexLen)
+				chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+	
+		whole_sequence = load_sequence(self.filelist,chooseFileIndex,startoffset,load_length,self.sr) 
 		whole_sequence = whole_sequence.reshape(-1,1)
-		sequence = whole_sequence[:-1]
-		target = whole_sequence[1:]
+		if self.is_seeded:
+			sequence = whole_sequence.reshape(-1,1)
+			target = whole_sequence.reshape(-1,1)
+		else:
+			assert len(whole_sequence) == self.seqLen+1, str(len(whole_sequence))
+			sequence = whole_sequence[:-1]
+			target = whole_sequence[1:]			
+		
+		if self.transform is not None:
+			input = self.transform(sequence)
+		
+		if self.target_transform is not None:
+			target = self.target_transform(target)
+		"""
+		
+		if self.is_seeded:
+			startoffset = self.load_start/sr
+			chooseFileIndex = 0
+			whole_sequence = load_sequence(self.filelist,chooseFileIndex,startoffset,self.seqLen,self.sr) 
+			sequence = whole_sequence.reshape(-1,1)
+			target = whole_sequence.reshape(-1,1)
+		else:
+			chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+			#while whole_sequence is None: #if len(whole_sequence) < self.seqLen+1, pick another random section
+			while self.fileDuration[chooseFileIndex] < (startoffset + self.seqLenInSec + 1/self.sr):
+				index = np.random.randint(self.indexLen)
+				chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+				
+			whole_sequence = load_sequence(self.filelist,chooseFileIndex,startoffset,self.seqLen+1,self.sr) 
+			whole_sequence = whole_sequence.reshape(-1,1)
+			assert len(whole_sequence) == self.seqLen+1, str(len(whole_sequence))
+			sequence = whole_sequence[:-1]
+			target = whole_sequence[1:]
 
 		if self.transform is not None:
 			input = self.transform(sequence)
@@ -169,7 +208,7 @@ class AudioDataset(data.Dataset):
 		if self.target_transform is not None:
 			target = self.target_transform(target)
 		
-		"""
+		
 		#for now if generating audio cannot generate anything else because of softmax output 
 		if len(self.generate) > 1:
 			self.generatelist = [n for n in self.generate if n != 'audio'] #grab the names of the other things to generate less audio
@@ -188,13 +227,30 @@ class AudioDataset(data.Dataset):
 			paramdict = pm.resampleAllParams(params,self.seqLen,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
 			paramtensor = self.param_transform(paramdict)
 			input = torch.cat((input,paramtensor),1)  #input dim: (batch,seq,feature), batch dimension wrapped in automatically in Dataloader later			
-
+		
 		return input, target
 
 	def __len__(self):
 		return self.indexLen 
 		
 	def rand_sample(self,index=None,transform=False):
+		if index is None:
+			index = np.random.randint(self.indexLen)
+		chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+
+		while self.fileDuration[chooseFileIndex] < (startoffset + self.seqLenInSec):
+			index = np.random.randint(self.indexLen)
+			chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+
+		print('loading part of file:',self.filelist[chooseFileIndex],'starting at',startoffset)
+		whole_sequence = load_sequence(self.filelist,chooseFileIndex,startoffset,self.seqLen,self.sr)
+		sequence = whole_sequence[:-1]
+		if transform:
+			trans_sequence = self.transform(sequence)
+			return sequence, trans_sequence 		
+		return sequence
+		
+		"""
 		whole_sequence = None
 		while whole_sequence is None:
 			if index is None:
@@ -208,11 +264,11 @@ class AudioDataset(data.Dataset):
 			trans_sequence = self.transform(sequence)
 			return sequence, trans_sequence 
 		return sequence
-
+		"""
 
 class ParamDataset(data.Dataset):	 
 	def __init__(self, datadir, sr, seqLen, stride, 
-				paramdir, prop, generate, extension, 
+				paramdir, prop, generate, extension, is_seeded, load_start,
 				param_transform=None):
 		"""
 		sr: standardized sample rate of parameters in dataset. For parameters with different sr, will be resampled to a common value. 
@@ -235,33 +291,44 @@ class ParamDataset(data.Dataset):
 		self.paramdir= paramdir
 		self.prop = prop
 		self.generate = generate
+		self.is_seeded = is_seeded
+		self.load_start = load_start
 		self.fileLen,self.fileDuration,self.totalFileDuration,self.totalSamples,self.srInSec,self.seqLenInSec = dataset_properties(self.filelist,sr,seqLen)
 		self.sr = sr
 		self.seqLen = seqLen
 		self.stride = stride
 		self.param_transform = param_transform
 		self.indexLen = create_sampling_index(self.totalSamples,self.stride)
-			
+
+
 	def __getitem__(self,index):
 		chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-
-		while self.fileDuration[chooseFileIndex] < (startoffset + self.seqLenInSec):
-			index = np.random.randint(self.indexLen)
-			chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+		if self.is_seeded:
+			startoffset = self.load_start/self.sr
+			load_length = self.seqLen
+		else:
+			load_length = self.seqLen+1
+			while self.fileDuration[chooseFileIndex] < (startoffset + self.seqLenInSec + 1/self.sr):
+				index = np.random.randint(self.indexLen)
+				chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
 		
 		pm = paramManager.paramManager(self.datadir, self.paramdir)
 		params = pm.getParams(self.filelist[chooseFileIndex])
-		generatedict = pm.resampleAllParams(params,self.seqLen+1,startoffset,startoffset+self.seqLenInSec,self.generate,verbose=False)
+		generatedict = pm.resampleAllParams(params,load_length,startoffset,startoffset+self.seqLenInSec,self.generate,verbose=False)
 		generatetensor = self.param_transform(generatedict) #tensor containing params to be generated
 		if len(self.prop)>0: 
-			paramdict = pm.resampleAllParams(params,self.seqLen+1,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
+			paramdict = pm.resampleAllParams(params,load_length,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
 			paramtensor = self.param_transform(paramdict) #tensor containing conditional params
 			fulltensor = torch.cat((generatetensor,paramtensor),1)
 		else:
 			fulltensor = generatetensor
 
-		input = fulltensor[:-1]
-		target = generatetensor[1:]
+		if self.is_seeded:
+			input = fulltensor
+			target = generatetensor
+		else:
+			input = fulltensor[:-1]
+			target = generatetensor[1:]
 
 		return input, target
 
@@ -284,7 +351,7 @@ class ParamDataset(data.Dataset):
 
 		if transform:
 			trans_sequence = self.param_transform(paramdict)
-			return paramdict, trans_sequence 
+			return paramdict, trans_sequence 		
 		return paramdict
 
 
@@ -292,7 +359,8 @@ class DataLoader(data.DataLoader):
 	def __init__(self, datadir, sr=16000, seqLen=512, stride=1, 
 				paramdir=None, prop=None, generate=None, extension='.wav',
 				mulaw_channels=256,
-				batch_size=1, shuffle=True, num_workers=4, onehot=False):
+				batch_size=1, shuffle=True, num_workers=4, onehot=False,
+				is_seeded=False,load_start=0):
 
 		assert set(prop).isdisjoint(generate), 'Cannot repeat keywords in both prop and generate!'
 		param_transform_list = []
@@ -309,7 +377,7 @@ class DataLoader(data.DataLoader):
 				audio_transform_list =  [tr.mulawEncode(mulaw_channels,norm=True),tr.array2tensor(torch.FloatTensor)]
 			
 			self.dataset = AudioDataset(datadir, sr, seqLen, stride,
-					paramdir, prop, generate, extension,
+					paramdir, prop, generate, extension, is_seeded, load_start,
 					transform=transform.Compose(audio_transform_list),
 					param_transform=transform.Compose(param_transform_list),
 					target_transform=transform.Compose([tr.mulawEncode(mulaw_channels),tr.array2tensor(torch.LongTensor)]))
@@ -319,7 +387,7 @@ class DataLoader(data.DataLoader):
 			#assert prop is not None, 'Please provide parameters to be used [prop]!'
 
 			self.dataset = ParamDataset(datadir, sr, seqLen, stride,
-					paramdir, prop, generate, extension,
+					paramdir, prop, generate, extension, is_seeded, load_start,
 					param_transform=transform.Compose(param_transform_list))
 
 		super(DataLoader, self).__init__(self.dataset, batch_size, shuffle, num_workers=num_workers)

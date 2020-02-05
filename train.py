@@ -67,6 +67,7 @@ class Trainer:
 				break
 
 		self.model.save(self.args.new_model_dir, step)
+		print("Ended training at: {:%Y-%m-%d %H:%M:%S}".format(datetime.now()))
 
 
 def prepare_output_dir(args):
