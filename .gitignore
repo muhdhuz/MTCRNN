@@ -15,4 +15,6 @@ codetest.ipynb
 cmd.txt
 *.npy
 *.ipynb
+*.pbs
 /generated
+/network/networks_old.py

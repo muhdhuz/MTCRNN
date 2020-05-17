@@ -83,6 +83,12 @@ def config_parser(config_file,namespace=False):
 def dictfilter(dic, keys):
 	return {key:dic[key] for key in keys}
 
+def print_both(file, *args):
+	"""prints and write to file simultaneously"""
+	toprint = ' '.join([str(arg) for arg in args])
+	print(toprint)
+	file.write(toprint+'\n')
+
 #timing
 #*************************************
 class Timer:
@@ -275,3 +281,12 @@ def ScaleAudio_all(indir,outdir,scaling_function,*args,**kwargs):
 				if not os.path.isdir(structure):
 					os.mkdir(structure)
 				ScaleAudio(os.path.join(dirpath, name),structure,scaling_function,*args,**kwargs)
+
+
+#neural network training
+#*************************************
+def LinearScheduler(start,end,steps):
+	"""yields a value that decays linearly with steps.
+	used for scheduled sampling"""
+	for i in np.linspace(start,end,steps):
+		yield i

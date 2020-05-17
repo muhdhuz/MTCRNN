@@ -1,11 +1,14 @@
 """
-Audio dataloader is a chunker and dataloader that loads a part of an audio clip 
+The dataloader class below is a chunker and data loader that loads a part of an audio clip 
 plus corresponding parameters (if any) from a param file. To be used with pytorch platform.
+It can also load parameters directly from parameter files. 
+Intended to be used for the MTCRNN project: https://github.com/muhdhuz/MTCRNN 
 
+Algo for audio loading:
 to load each group containing: 1 audio wav file
 							   1 parameter json file
-filenames will be contained within a csv file (1 group per line), or directly loaded from a directory
-1. parse csvfile/directory. get path of all objects in each line and append to list
+filenames will be contained within a directory tree, specify the root
+1. parse directory. get path of all objects in each line and append to list
 2. create a list of indices to draw samples (eg. index 52 = 4th wav file sample 390). this no. will also be the __len__
 3. __getitem__:
 	sample index
@@ -15,10 +18,15 @@ filenames will be contained within a csv file (1 group per line), or directly lo
 	convert audio to mu-law
 	convert mu-law + params to tensor
 
-@muhammad huzaifah 29/12/2019
+@muhammad huzaifah 16/05/2020
 
 Notes: Eventually hope to migrate to torchaudio for loading/transformations
-		Currently torchaudio dependency libsox is broken for windows
+	   Currently torchaudio dependency libsox is broken for windows
+
+	   This dataloader has the following expanded capabilities:
+	   - load/transform parameters directly from param file
+	   - load a single audio file at a specified start point
+	   - handle variable file lengths in data directory
 """
 
 import torch
@@ -26,7 +34,6 @@ import torch.utils.data as data
 import torchvision.transforms as transform
 
 import os
-import csv
 import numpy as np
 import math
 import soundfile as sf 
@@ -41,27 +48,27 @@ def file2list(rootdir,extension):
 	return filelist
 
 def listDirectory_all(directory,fileExtList=None,topdown=True,regex=None):
-    """returns a list of all files in directory and all its subdirectories
+	"""returns a list of all files in directory and all its subdirectories
 	directory: either a single file or a directory. If directory fileExtList has to be supplied
-    fileList: full path
-    fnameList: basenames"""
-    fileList = []
-    fnameList = []
-    if os.path.isdir(directory):
-        for root, _, files in os.walk(directory, topdown=topdown):
-            for name in files:
-                if regex is not None:
-                    if ((os.path.splitext(name)[1] in fileExtList) and (regex in name)):
-                        fileList.append(os.path.join(root, name))
-                        fnameList.append(name)
-                else:
-                    if (os.path.splitext(name)[1] in fileExtList):
-                        fileList.append(os.path.join(root, name))
-                        fnameList.append(name)
-    else:
-        fileList.append(directory)
-        fnameList.append(os.path.basename(directory)) 
-    return fileList , fnameList
+	fileList: full path
+	fnameList: basenames"""
+	fileList = []
+	fnameList = []
+	if os.path.isdir(directory):
+		for root, _, files in os.walk(directory, topdown=topdown):
+			for name in files:
+				if regex is not None:
+					if ((os.path.splitext(name)[1] in fileExtList) and (regex in name)):
+						fileList.append(os.path.join(root, name))
+						fnameList.append(name)
+				else:
+					if (os.path.splitext(name)[1] in fileExtList):
+						fileList.append(os.path.join(root, name))
+						fnameList.append(name)
+	else:
+		fileList.append(directory)
+		fnameList.append(os.path.basename(directory)) 
+	return fileList , fnameList
 
 def check_duration(filelist,allsame=False):
 	"""use PySoundFile's info method to find the duration of all files in filelist
@@ -127,9 +134,12 @@ class AudioDataset(data.Dataset):
 		seqLen: sequence length of each input data in no. of samples. must be less no. samples in each audio file
 		stride: shift in no. of samples between adjacent data sequences. (seqLen - stride) samples will overlap between adjacent sequences
 		datadir: root data directory
-		extension: file extension of data. default='.wav'
+		extension: file extension of data
 		paramdir: directory of parameter files
 		prop: list of parameter keys to be used for input conditioning
+		generate: list of parameters key/audio to be generated
+		is_seeded: Boolean to specify whether to load data from seed file
+		load_start: If is_seeded, specify start time point to load file
 		transform: list of transformations on input audio sequence. use with torchvision.transforms.Compose() for multiple
 		param_transform: list of transformations on parameters. use with torchvision.transforms.Compose() for multiple
 		target_transform: list of transformations on target audio sequence. use with torchvision.transforms.Compose() for multiple 
@@ -156,21 +166,10 @@ class AudioDataset(data.Dataset):
 
 
 	def __getitem__(self,index):
-		chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+		whole_sequence = self.rand_sample(index)
 		if self.is_seeded:
-			startoffset = self.load_start/self.sr
-			load_length = self.seqLen
-		else:
-			load_length = self.seqLen+1
-			while self.fileDuration[chooseFileIndex] < (startoffset + self.seqLenInSec + 1/self.sr):
-				index = np.random.randint(self.indexLen)
-				chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-	
-		whole_sequence = load_sequence(self.filelist,chooseFileIndex,startoffset,load_length,self.sr) 
-		whole_sequence = whole_sequence.reshape(-1,1)
-		if self.is_seeded:
-			sequence = whole_sequence.reshape(-1,1)
-			target = whole_sequence.reshape(-1,1)
+			sequence = whole_sequence
+			target = whole_sequence
 		else:
 			assert len(whole_sequence) == self.seqLen+1, str(len(whole_sequence))
 			sequence = whole_sequence[:-1]
@@ -181,6 +180,39 @@ class AudioDataset(data.Dataset):
 		
 		if self.target_transform is not None:
 			target = self.target_transform(target)
+
+		if self.paramdir is not None and len(self.prop)>0:
+			pm = paramManager.paramManager(self.datadir, self.paramdir)
+			params = pm.getParams(self.filelist[self.chooseFileIndex]) 
+			paramdict = pm.resampleAllParams(params,self.seqLen,self.startoffset,self.startoffset+self.seqLenInSec,self.prop,verbose=False)
+			paramtensor = self.param_transform(paramdict)
+			input = torch.cat((input,paramtensor),1)  #input dim: (batch,seq,feature), batch dimension wrapped in automatically in Dataloader later			
+		
+		return input, target
+
+	def __len__(self):
+		return self.indexLen 
+
+
+	def rand_sample(self,index=None,verbose=False):
+		if index is None:
+			index = np.random.randint(self.indexLen)
+		self.chooseFileIndex,self.startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+		if self.is_seeded:
+			self.startoffset = self.load_start/self.sr
+			self.load_length = self.seqLen
+		else:
+			self.load_length = self.seqLen+1
+			while self.fileDuration[self.chooseFileIndex] < (self.startoffset + self.seqLenInSec + 1/self.sr):
+				index = np.random.randint(self.indexLen)
+				self.chooseFileIndex,self.startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+	
+		if verbose:
+			print('loading part of file:',self.filelist[self.chooseFileIndex],'starting at',self.startoffset)
+		whole_sequence = load_sequence(self.filelist,self.chooseFileIndex,self.startoffset,self.load_length,self.sr) 
+		whole_sequence = whole_sequence.reshape(-1,1)
+		return whole_sequence
+		
 		"""
 		
 		if self.is_seeded:
@@ -221,50 +253,7 @@ class AudioDataset(data.Dataset):
 				target = torch.cat((target, generatetensor[1:]),1)
 		"""
 
-		if self.paramdir is not None and len(self.prop)>0:
-			pm = paramManager.paramManager(self.datadir, self.paramdir)
-			params = pm.getParams(self.filelist[chooseFileIndex]) 
-			paramdict = pm.resampleAllParams(params,self.seqLen,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
-			paramtensor = self.param_transform(paramdict)
-			input = torch.cat((input,paramtensor),1)  #input dim: (batch,seq,feature), batch dimension wrapped in automatically in Dataloader later			
-		
-		return input, target
 
-	def __len__(self):
-		return self.indexLen 
-		
-	def rand_sample(self,index=None,transform=False):
-		if index is None:
-			index = np.random.randint(self.indexLen)
-		chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-
-		while self.fileDuration[chooseFileIndex] < (startoffset + self.seqLenInSec):
-			index = np.random.randint(self.indexLen)
-			chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-
-		print('loading part of file:',self.filelist[chooseFileIndex],'starting at',startoffset)
-		whole_sequence = load_sequence(self.filelist,chooseFileIndex,startoffset,self.seqLen,self.sr)
-		sequence = whole_sequence[:-1]
-		if transform:
-			trans_sequence = self.transform(sequence)
-			return sequence, trans_sequence 		
-		return sequence
-		
-		"""
-		whole_sequence = None
-		while whole_sequence is None:
-			if index is None:
-				index = np.random.randint(self.indexLen)
-			chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-			print('loading part of file:',self.filelist[chooseFileIndex])	
-			whole_sequence = load_sequence(self.filelist,chooseFileIndex,startoffset,self.seqLen,self.sr)
-		#whole_sequence = whole_sequence.reshape(-1,1)
-		sequence = whole_sequence[:-1]
-		if transform:
-			trans_sequence = self.transform(sequence)
-			return sequence, trans_sequence 
-		return sequence
-		"""
 
 class ParamDataset(data.Dataset):	 
 	def __init__(self, datadir, sr, seqLen, stride, 
@@ -275,9 +264,12 @@ class ParamDataset(data.Dataset):
 		seqLen: sequence length of each input data in no. of samples. must be less than sr*duration
 		stride: shift in no. of samples between adjacent data sequences. (seqLen - stride) samples will overlap between adjacent sequences
 		datadir: root audio data directory
-		extension: file extension of data. default='.wav'
+		extension: file extension of data
 		paramdir: directory of parameter files
 		prop: list of parameter keys to be used for input conditioning
+		generate: list of parameters key/audio to be generated
+		is_seeded: Boolean to specify whether to load data from seed file
+		load_start: If is_seeded, specify start time point to load file
 		transform: list of transformations on input audio sequence. use with torchvision.transforms.Compose() for multiple
 		param_transform: list of transformations on parameters. use with torchvision.transforms.Compose() for multiple
 		target_transform: list of transformations on target audio sequence. use with torchvision.transforms.Compose() for multiple 
@@ -302,27 +294,13 @@ class ParamDataset(data.Dataset):
 
 
 	def __getitem__(self,index):
-		chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-		if self.is_seeded:
-			startoffset = self.load_start/self.sr
-			load_length = self.seqLen
-		else:
-			load_length = self.seqLen+1
-			while self.fileDuration[chooseFileIndex] < (startoffset + self.seqLenInSec + 1/self.sr):
-				index = np.random.randint(self.indexLen)
-				chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-		
-		pm = paramManager.paramManager(self.datadir, self.paramdir)
-		params = pm.getParams(self.filelist[chooseFileIndex])
-		generatedict = pm.resampleAllParams(params,load_length,startoffset,startoffset+self.seqLenInSec,self.generate,verbose=False)
+		generatedict, paramdict = self.rand_sample(index)		
 		generatetensor = self.param_transform(generatedict) #tensor containing params to be generated
 		if len(self.prop)>0: 
-			paramdict = pm.resampleAllParams(params,load_length,startoffset,startoffset+self.seqLenInSec,self.prop,verbose=False)
 			paramtensor = self.param_transform(paramdict) #tensor containing conditional params
 			fulltensor = torch.cat((generatetensor,paramtensor),1)
 		else:
 			fulltensor = generatetensor
-
 		if self.is_seeded:
 			input = fulltensor
 			target = generatetensor
@@ -334,25 +312,30 @@ class ParamDataset(data.Dataset):
 
 	def __len__(self):
 		return self.indexLen 
-		
-	def rand_sample(self,index=None,transform=False):
+
+
+	def rand_sample(self,index=None,verbose=False):
 		if index is None:
 			index = np.random.randint(self.indexLen)
-		chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+		self.chooseFileIndex,self.startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
+		if self.is_seeded:
+			self.startoffset = self.load_start/self.sr
+			self.load_length = self.seqLen
+		else:
+			self.load_length = self.seqLen+1
+			while self.fileDuration[self.chooseFileIndex] < (self.startoffset + self.seqLenInSec + 1/self.sr):
+				index = np.random.randint(self.indexLen)
+				self.chooseFileIndex,self.startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)	
+		if verbose:
+			print('loading part of file:',self.filelist[self.chooseFileIndex],'starting at',self.startoffset)
 
-		while self.fileDuration[chooseFileIndex] < (startoffset + self.seqLenInSec):
-			index = np.random.randint(self.indexLen)
-			chooseFileIndex,startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
-		
-		print('loading part of file:',self.filelist[chooseFileIndex],'starting at',startoffset)
-		pm = paramManager.paramManager(self.datadir, self.paramdir)	
-		params = pm.getParams(self.filelist[chooseFileIndex]) 
-		paramdict = pm.resampleAllParams(params,self.seqLen,startoffset,startoffset+self.seqLenInSec,self.generate,verbose=False)
+		pm = paramManager.paramManager(self.datadir, self.paramdir)
+		self.params = pm.getParams(self.filelist[self.chooseFileIndex])
+		generatedict = pm.resampleAllParams(self.params,self.load_length,self.startoffset,self.startoffset+self.seqLenInSec,self.generate,verbose=False)
+		if len(self.prop)>0: 
+			paramdict = pm.resampleAllParams(self.params,self.load_length,self.startoffset,self.startoffset+self.seqLenInSec,self.prop,verbose=False)
+		return generatedict, paramdict
 
-		if transform:
-			trans_sequence = self.param_transform(paramdict)
-			return paramdict, trans_sequence 		
-		return paramdict
 
 
 class DataLoader(data.DataLoader):
@@ -370,7 +353,7 @@ class DataLoader(data.DataLoader):
 		param_transform_list.append(tr.dic2tensor(torch.FloatTensor))
 
 		if 'audio' in generate:
-			assert len([generate]) == 1, 'Audio generation is incompatiple with simultaneous generation of other parameters!'
+			assert len(generate) == 1, 'Audio generation is incompatiple with simultaneous generation of other parameters!'
 			if onehot:
 				audio_transform_list =  [tr.mulawEncode(mulaw_channels,norm=False),tr.onehotEncode(mulaw_channels),tr.array2tensor(torch.FloatTensor)]
 			else:
@@ -393,25 +376,26 @@ class DataLoader(data.DataLoader):
 		super(DataLoader, self).__init__(self.dataset, batch_size, shuffle, num_workers=num_workers)
 
 
+
+
 """
-from transforms import mulawnEncode,mulaw,array2tensor,dic2tensor	
-sr = 16000
-seqLen = 5
-stride = 1
+for testing
 
-adataset = AudioDataset(sr,seqLen,stride,
-			datadir="dataset",extension="wav",
-			paramdir="dataparam",prop=['rmse','instID','midiPitch'],  
-			transform=transform.Compose([mulawnEncode(256,0,1),array2tensor(torch.FloatTensor)]),
-			param_transform=dic2tensor(torch.FloatTensor),
-			target_transform=transform.Compose([mulaw(256),array2tensor(torch.LongTensor)]))
+loader = DataLoader(datadir="dataset",   
+                    sr=16000,seqLen=10,stride=1,
+                    batch_size=1,
+                    paramdir="param",
+                    prop=['rmse', 'centroid'],
+                    generate=['audio'],is_seeded=False,load_start=0)
 
-for i in range(len(adataset)):
-	inp,target = adataset[i]
-	print(inp)
-	print(target)
-	
-	if i == 2:
-		break 
+print(len(loader))
+for step, (inputs,targets) in enumerate(loader):
+    print(step)
+    print(inputs.shape)
+    print(inputs)
+    print(targets.shape)
+
+    if step == 1:
+        break
 """
 

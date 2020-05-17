@@ -20,17 +20,19 @@ class Generator:
 		self.args = args
 		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 		print("using", self.device)
-		if torch.cuda.is_available():
-			torch.cuda.empty_cache()
+		#if torch.cuda.is_available():
+		#	torch.cuda.empty_cache()
 
 		if 'audio' in args.generate:
 			self.model = CondRNN(args.cond_size+args.gen_size, args.hidden_size,
 								args.mulaw_channels, args.n_layers, self.device,
-								paramonly=False,onehot=args.onehot)
+								paramonly=False,onehot=args.onehot,
+								ntype=args.net,plstm=args.plstm)
 		else:
 			self.model = CondRNN(args.cond_size+args.gen_size, args.hidden_size,
 								args.gen_size, args.n_layers, self.device,
-								paramonly=True,onehot=args.onehot)
+								paramonly=True,onehot=args.onehot,
+								ntype=args.net,plstm=args.plstm)
 
 		self.model.load(args.model_dir, args.step)
 
@@ -50,19 +52,14 @@ class Generator:
 			self.param_array = np.load(args.external_array)
 
 
-	def _random_primer(self,cond_size,length=1,seed=None):
-		#NOT IMPLEMENTED
+	def _random_primer(self,batch_size,feature_size,length=1,seed=None):
 		"""make noisy priming signal
-		primer shape: [batchsize,length,cond_size+1]"""
+		feature_size = cond_size+gen_size
+		primer shape: [batchsize,length,feature_size]"""
 		np.random.seed(seed)
-		myp=np.zeros([1,length,cond_size+1])
-		myp[0,:,0] =.1*np.random.ranf([length]) #signal
-		for dim in range(cond_size):
-			myp[0,:,dim+1] =.1*np.random.ranf([length])#-.15 #signal
-		#myp[0,:,1] = .45+.1*np.random.ranf([length])     #instrument
-		#myp[0,:,2] = .05*np.random.ranf([length])    #volume
-		#myp[0,:,3] = np.random.ranf([1])    #pitch
-		return torch.tensor(myp, dtype=torch.float, device=cfg.device)
+		myp = np.random.ranf((batch_size,length,feature_size))
+
+		return torch.tensor(myp, dtype=torch.float, device=self.device)
 
 
 	def _get_seed_from_audio(self, filepath):
@@ -75,7 +72,7 @@ class Generator:
 
 
 	def _save_to_audio_file(self, data):
-		if data.shape[0] > 0:
+		if data.shape[0] > 1:
 			for i in range(data.shape[0]):
 				sf.write(self.args.out+'_'+str(i)+'.wav', data[i], 16000, 'PCM_24')
 				print('Saved wav file as {}'.format(self.args.out+'_'+str(i)))
@@ -88,6 +85,8 @@ class Generator:
 		start_time = datetime.datetime.now()
 		with torch.no_grad():
 			outputs = []
+			mus = []
+			sigs = []
 			if self.args.paramvect == 'external':
 				if params is None:
 					params = self.param_array
@@ -99,17 +98,28 @@ class Generator:
 			
 			for inputs, _ in self.data_loader:
 				print('priming...')
-				input = inputs[:,:self.args.seq_len-self.args.length,:].to(self.device)
-				next_input, hidden = self.model.build_hidden_state(input)
+				onetime = torch.arange(self.args.seq_len,dtype=torch.float) #plstm things
+				times = onetime.repeat(inputs.shape[0],1).to(self.device)
+				if self.args.rand_prime:
+					input = self._random_primer(batch_size=self.args.batch_size,feature_size=self.args.cond_size+self.args.gen_size,
+										length=self.args.seq_len-self.args.length,seed=self.args.rand_seed)
+				else:
+					input = inputs[:,:self.args.seq_len-self.args.length,:].to(self.device)
+				next_input, hidden = self.model.build_hidden_state(input,times[:,:self.args.seq_len-self.args.length])
 				print('DONE')
 				progress = ProgressBar(self.args.length, fmt=ProgressBar.FULL)
 
 				for length in range(self.args.length):
-					transformed_sample, predicted_sample, hidden = self.model.generate(next_input,hidden,self.args.temp)
+					timestep = times[:,self.args.seq_len-self.args.length+length-1]
+					transformed_sample, predicted_sample, hidden, mu, sig = self.model.generate(next_input,hidden,self.args.temp,timestep)
 
 					if predicted_sample.shape[1] > 1:
-						predicted_sample = np.expand_dims(predicted_sample, axis=1) 
+						predicted_sample = np.expand_dims(predicted_sample, axis=1)
+						mu = np.expand_dims(mu, axis=1) 
+						sig = np.expand_dims(sig, axis=1)  
 					outputs = np.concatenate((outputs, predicted_sample),axis=1) if len(outputs) else predicted_sample
+					mus = np.concatenate((mus, mu),axis=1) if len(mus) else mu
+					sigs = np.concatenate((sigs, sig),axis=1) if len(sigs) else sig
 					#print('{0}/{1} samples are generated.'.format(outputs.shape[1], self.args.length))
 					progress()		
 					
@@ -140,11 +150,11 @@ class Generator:
 
 			if self.args.paramvect == 'self':
 				#return: outputs, original cond params, original generated features
-				return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.gen_size:].numpy(), inputs[:,self.args.seq_len-self.args.length:,:self.args.gen_size].numpy()
-				#return outputs, inputs[:,:,self.args.gen_size:].numpy(), inputs[:,:,:self.args.gen_size].numpy()
+				#return outputs, inputs[:,self.args.seq_len-self.args.length:,self.args.gen_size:].numpy(), inputs[:,self.args.seq_len-self.args.length:,:self.args.gen_size].numpy()#, mus, sigs
+				return outputs, inputs[:,:,self.args.gen_size:].numpy(), inputs[:,:,:self.args.gen_size].numpy()
 			elif self.args.paramvect == 'external':
 				#return: outputs, original cond params
-				return outputs, params_re
+				return outputs, params_re#, mus, sigs
 			else:
 				#return: outputs
 				return outputs

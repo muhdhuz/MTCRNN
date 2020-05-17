@@ -1,3 +1,7 @@
+"""
+Various audio/Pytorch data transformations
+"""
+
 import numpy as np
 import torch
 
@@ -75,7 +79,7 @@ class mulawDecode:
 
 
 class array2tensor:
-	"""Convert ndarrays in sample to Tensors. Samples are assumed to be python dics"""
+	"""Convert ndarrays in sample to Tensors. Samples are assumed to be python dicts"""
 	def __init__(self,dtype):
 		self.dtype = dtype
 	
@@ -84,7 +88,7 @@ class array2tensor:
 
 
 class dic2tensor:
-	"""Convert ndarrays in sample to Tensors. Samples are assumed to be python dics"""
+	"""Convert ndarrays in sample to Tensors. Samples are assumed to be python dicts"""
 	def __init__(self,dtype):
 		self.dtype = dtype
 
