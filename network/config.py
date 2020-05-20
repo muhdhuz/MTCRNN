@@ -22,13 +22,13 @@ parser.add_argument('--mulaw_channels', type=int, default=256, help='mu-law enco
 parser.add_argument('--batch_size', type=int, default=16, help='minibatch size for training input')
 
 #data arguments
-parser.add_argument('--param_dir', type=str, default=None, help='parameter file directory ')
+parser.add_argument('--param_dir', type=str, default=None, help='parameter file directory')
 parser.add_argument('--prop', type=str, default=[], nargs='+', help='parameters to be used as conditioning')
 parser.add_argument('--cond_size', type=int, default=16, help='input vector size: conditional vector')
 parser.add_argument('--generate', type=str, default=['audio'], nargs='+', help='parameters/audio to be generated, defaults audio')
 parser.add_argument('--gen_size', type=int, default=1, help='input vector size: generated features, if audio only = 1 or one-hot channels')
 parser.add_argument('--onehot', action='store_true', help='whether to transform mulaw to onehot prior to input')
-parser.add_argument('--temp', type=float, default=1.0, help='temperature param for sampling randomness. Normally 1.0 for training.')
+parser.add_argument('--temp', type=float, default=1.0, help='temperature param for sampling randomness. Normally 1.0 for training')
 #parser.add_argument('--no_shuffle', action='store_false', help='whether to shuffle (randomize) data loading (default:shuffle)')
 
 def parse_args(is_training=True):
@@ -57,7 +57,7 @@ def parse_args(is_training=True):
         parser.add_argument('--external_array', type=str, default=None, help='a saved numpy array of shape [batch,length,features] for external conditioning')        
         parser.add_argument('--external_sr', type=int, default=None, help='original sample rate of external conditioning array')
         parser.add_argument('--save', action='store_true', help='save the output (if audio this is automatic)')
-        parser.add_argument('--rand_prime', action='store_true', help='overwrites the use of random real data to use a random_prime. Prime length will be (seq_len-length)')
+        parser.add_argument('--rand_prime', action='store_true', help='overwrites the use of random real data (also external_prime) to use a randomly generated primer. Primer length will be (seq_len-length)')
         parser.add_argument('--rand_seed', type=int, default=None, help='provide a seed for random generation if want to get same number consistently')    
     
     return parser.parse_args()

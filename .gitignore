@@ -18,3 +18,4 @@ cmd.txt
 *.pbs
 /generated
 /network/networks_old.py
+generate_old.py

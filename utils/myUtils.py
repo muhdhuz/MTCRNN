@@ -186,15 +186,29 @@ def listDirectory(directory,fileExtList='.wav',regex=None):
 				if os.path.splitext(f)[1] in fileExtList]  
 	return fileList , fnameList
 
-def listDirectory_all(directory,topdown=True):
-	"""returns a list of all files in directory and all its subdirectories"""
-	fileList = []
-	fnameList = []
-	for root, _, files in os.walk(directory, topdown=topdown):
-		for name in files:
-			fileList.append(os.path.join(root, name))
-			fnameList.append(name)
-	return fileList , fnameList
+def listDirectory_all(directory,fileExt='.wav',topdown=True):
+    """returns a list of all files in directory and all its subdirectories
+	directory can also take a single file.
+    fileList: full path to file
+    fnameList: basenames
+    fnameList_noext: basenames with no extension"""
+    fileList = []
+    fnameList = []
+    fnameList_noext = []
+    if os.path.isdir(directory):
+        for root, _, files in os.walk(directory, topdown=topdown):
+            for name in files:
+                if name.endswith(fileExt):
+                    fileList.append(os.path.join(root, name))
+                    fnameList.append(name)
+                    fnameList_noext.append(os.path.splitext(name)[0])
+    else:
+        if directory.endswith(fileExt):
+            fileList.append(directory)
+            basename = os.path.basename(directory)
+            fnameList.append(basename)
+            fnameList_noext.append(os.path.splitext(basename)[0])       
+    return fileList, fnameList, fnameList_noext
 
 def mass_delete(directory,regex,topdown=True):
 	"""deletes all files matching regex in directory and all its subdirectories"""

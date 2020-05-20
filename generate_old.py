@@ -40,9 +40,7 @@ class Generator:
 			#self.args.batch_size = 1
 			#self.args.data_dir = self.args.seed
 			self._get_seed_from_audio(self.args.seed)
-		elif args.seed is None and args.data_dir is None:
-			assert args.rand_prime, "provide either a seed file or directory for priming/generation! Or use rand_prime."
-			assert self.args.paramvect != 'self', "provide either a seed file or directory for 'self' generation!"
+
 		else:
 			self.data_loader = DataLoader(args.data_dir, args.sample_rate, args.seq_len, args.stride, 
 										paramdir=args.param_dir, prop=args.prop, generate=args.generate,
@@ -82,22 +80,6 @@ class Generator:
 			sf.write(self.args.out+'.wav', data[0], 16000, 'PCM_24')
 			print('Saved wav file as {}'.format(self.args.out))
 
-	def _priming(self,times):
-		print('priming...')
-		if self.args.paramvect == 'self' or not self.args.rand_prime:
-			for inputs, _ in self.data_loader:
-				input = inputs[:,:self.args.seq_len-self.args.length,:].to(self.device)
-				break		
-		if self.args.rand_prime:
-			input = self._random_primer(batch_size=self.args.batch_size,feature_size=self.args.cond_size+self.args.gen_size,
-									length=self.args.seq_len-self.args.length,seed=self.args.rand_seed)
-			if not self.args.paramvect == 'self':
-				inputs = 0 #just a dummy var
-
-		next_input, hidden = self.model.build_hidden_state(input,times[:,:self.args.seq_len-self.args.length])
-		print('DONE')
-		return next_input, hidden, inputs
-
 
 	def generate(self,params=None,original_sr=None):
 		start_time = datetime.datetime.now()
@@ -105,8 +87,6 @@ class Generator:
 			outputs = []
 			mus = []
 			sigs = []
-			onetime = torch.arange(self.args.seq_len,dtype=torch.float) #plstm things
-			times = onetime.repeat(self.args.batch_size,1).to(self.device)
 			if self.args.paramvect == 'external':
 				if params is None:
 					params = self.param_array
@@ -116,36 +96,49 @@ class Generator:
 					assert original_sr is not None, "Please provide the original sample rate of the parameters for paramvect option external!"
 				_,params_re = paramManager.resample(params,original_sr,self.args.sample_rate)
 			
-			next_input, hidden, inputs = self._priming(times)
-			progress = ProgressBar(self.args.length, fmt=ProgressBar.FULL)
+			for inputs, _ in self.data_loader:
+				print('priming...')
+				onetime = torch.arange(self.args.seq_len,dtype=torch.float) #plstm things
+				times = onetime.repeat(self.args.batch_size,1).to(self.device)  #inputs.shape[0]
+				print(times.shape)
+				if self.args.rand_prime:
+					input = self._random_primer(batch_size=self.args.batch_size,feature_size=self.args.cond_size+self.args.gen_size,
+										length=self.args.seq_len-self.args.length,seed=self.args.rand_seed)
+				else:
+					input = inputs[:,:self.args.seq_len-self.args.length,:].to(self.device)
+				next_input, hidden = self.model.build_hidden_state(input,times[:,:self.args.seq_len-self.args.length])
+				print('DONE')
+				progress = ProgressBar(self.args.length, fmt=ProgressBar.FULL)
 
-			for length in range(self.args.length):
-				timestep = times[:,self.args.seq_len-self.args.length+length-1]
-				transformed_sample, predicted_sample, hidden, mu, sig = self.model.generate(next_input,hidden,self.args.temp,timestep)
+				for length in range(self.args.length):
+					timestep = times[:,self.args.seq_len-self.args.length+length-1]
+					transformed_sample, predicted_sample, hidden, mu, sig = self.model.generate(next_input,hidden,self.args.temp,timestep)
 
-				if predicted_sample.shape[1] > 1:
-					predicted_sample = np.expand_dims(predicted_sample, axis=1)
-					mu = np.expand_dims(mu, axis=1) 
-					sig = np.expand_dims(sig, axis=1)  
-				outputs = np.concatenate((outputs, predicted_sample),axis=1) if len(outputs) else predicted_sample
-				mus = np.concatenate((mus, mu),axis=1) if len(mus) else mu
-				sigs = np.concatenate((sigs, sig),axis=1) if len(sigs) else sig
-				#print('{0}/{1} samples are generated.'.format(outputs.shape[1], self.args.length))
-				progress()		
-				
-				if self.args.paramvect == 'self':
-					paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.gen_size:]
-					next_input = torch.cat((transformed_sample,paramvect),dim=1).to(self.device)
-				
-				elif self.args.paramvect == 'external':
-					if length < params_re.shape[1]: 
-						paramvect = params_re[:,length,:]
-					else:
-						paramvect = params_re[:,-1,:] #if paramvect shorter than desired length just keep using the last value 
-					next_input = torch.cat((transformed_sample,torch.from_numpy(paramvect).float()),dim=1).to(self.device)
+					if predicted_sample.shape[1] > 1:
+						predicted_sample = np.expand_dims(predicted_sample, axis=1)
+						mu = np.expand_dims(mu, axis=1) 
+						sig = np.expand_dims(sig, axis=1)  
+					outputs = np.concatenate((outputs, predicted_sample),axis=1) if len(outputs) else predicted_sample
+					mus = np.concatenate((mus, mu),axis=1) if len(mus) else mu
+					sigs = np.concatenate((sigs, sig),axis=1) if len(sigs) else sig
+					#print('{0}/{1} samples are generated.'.format(outputs.shape[1], self.args.length))
+					progress()		
+					
+					if self.args.paramvect == 'self':
+						paramvect = inputs[:,self.args.seq_len-self.args.length+length,self.args.gen_size:]
+						next_input = torch.cat((transformed_sample,paramvect),dim=1).to(self.device)
+					
+					elif self.args.paramvect == 'external':
+						if length < params_re.shape[1]: 
+							paramvect = params_re[:,length,:]
+						else:
+							paramvect = params_re[:,-1,:] #if paramvect shorter than desired length just keep using the last value 
+						next_input = torch.cat((transformed_sample,torch.from_numpy(paramvect).float()),dim=1).to(self.device)
 
-				elif self.args.paramvect == 'none':
-					next_input = transformed_sample.to(self.device)
+					elif self.args.paramvect == 'none':
+						next_input = transformed_sample.to(self.device)
+
+				break
 
 			progress.done()
 			time.sleep(0.5)
