@@ -12,6 +12,7 @@ codetest.ipynb
 *.txt
 /figures
 /paper
+/npy_files
 cmd.txt
 *.npy
 *.ipynb
@@ -19,3 +20,4 @@ cmd.txt
 /generated
 /network/networks_old.py
 generate_old.py
+*.pdf

@@ -126,7 +126,7 @@ class CondRNN:
 					if self.paramonly:
 						input = torch.cat((output.detach(),inputs[:,timestep+1,output.shape[1]:]),1)
 					else:
-						next_sample, _ = samp.sample_multinomial(output, temperature, self.output_size, self.onehot)
+						next_sample, _, _ = samp.sample_multinomial(output, temperature, self.output_size, self.onehot)
 						input = torch.cat((next_sample.to(self.device),inputs[:,timestep+1,next_sample.shape[1]:]),1)
 
 			sequence_loss += loss
@@ -160,11 +160,12 @@ class CondRNN:
 
 			next_input = outputs.detach().cpu()
 			predicted_sample = outputs.detach().cpu().numpy()
+			p_cut = []
 		else:
-			next_input, predicted_sample = samp.sample_multinomial(outputs,temperature, self.output_size, self.onehot)
+			next_input, predicted_sample, p_cut = samp.sample_multinomial(outputs,temperature, self.output_size, self.onehot, cutoff=0.9)
 			mu, sig = [], []
 
-		return next_input, predicted_sample, hidden, mu, sig
+		return next_input, predicted_sample, hidden, mu, sig, p_cut
 
 	def _process_raw(self,tensor):
 		mu, sig, _ = tensor

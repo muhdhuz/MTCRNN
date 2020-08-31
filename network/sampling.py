@@ -4,9 +4,11 @@ Different sampling methods to generate results.
 """
 
 import math
+import numpy as np
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.transforms as transform
 import dataloader.transforms as tr
 
 
@@ -19,33 +21,53 @@ def sample_normal(mu, sigma, beta):
 	out = mu + eps*std
 	return out  #torch.sigmoid()
 
+def get_p(prob,cutoff):  #
+	sorted_probs, sorted_indices = torch.sort(prob,descending=True)
+	#print("prob",sorted_probs)
+	cumulative_probs = torch.cumsum(sorted_probs, dim=-1).detach().cpu().numpy()
+	#print("cum",cumulative_probs)
+	
+	#cutofftensor = np.full((cumulative_probs.shape[0], 1), cutoff)#cumulative_probs.new_full((cumulative_probs.shape[0], 1), cut_off)
+	#print("off",cutofftensor)
 
-def sample_multinomial(output, temperature, output_size, onehot=False):
+	cutoff_index = np.apply_along_axis(lambda a: a.searchsorted(cutoff), axis=1, arr=cumulative_probs)
+	cutoff_index = cutoff_index.reshape(cumulative_probs.shape[0],1)
+
+	#index = np.searchsorted(cumulative_probs, cut_offtensor) #torch.searchsorted only available in pyotch 1.6
+	#print("ind",cutoff_index)
+	return cutoff_index
+
+
+def sample_multinomial(output, temperature, output_size, onehot=False,cutoff=None):
 	"""sample from output layer of an audio trained model. Takes in unscaled logits"""
-	#log_output = torch.nn.functional.log_softmax(output,dim=1)
-
-	#topv, topi = log_output.topk(1) #output topi is a mu-law index
-	#mulaw_output2 = topi.detach().cpu().numpy()
-
-	#out_weights = log_output.div(temperature).exp()
 
 	scaled_logits = output.div(temperature)
-	out_weights = torch.nn.functional.softmax(scaled_logits,dim=1)
-
+	out_weights = F.softmax(scaled_logits,dim=1)
+	"""
+	topv, topi = out_weights.topk(1) #output topi is a mu-law index
+	chosen = torch.multinomial(topv, 1) #categorical distribution
+	idx = torch.gather(topi, 1, chosen) 
+	mulaw_output = idx.detach().cpu().numpy()
+	"""
+	if cutoff is not None:
+		cutoff_index = get_p(out_weights,cutoff)
+	else:
+		cutoff_index = []
+	
 	idx = torch.multinomial(out_weights, 1) #categorical distribution
 	mulaw_output = idx.detach().cpu().numpy()
-
+	
 	#encode for next step
 	if onehot:
-		mulaw_to_onehot = transform.Compose([tr.onehotEncode(output_size),tr.array2tensor(torch.FloatTensor)])
+		mulaw_transform = transform.Compose([tr.onehotEncode(output_size),tr.array2tensor(torch.FloatTensor)])
 	else:
 		mulaw_output_norm = mulaw_output/output_size #norm by no. of quantization channel -> [0,1]
-		mulaw_to_onehot = tr.array2tensor(torch.FloatTensor)
-	next_input = mulaw_to_onehot(mulaw_output_norm)
-	
+		mulaw_transform = tr.array2tensor(torch.FloatTensor)
+	next_input = mulaw_transform(mulaw_output_norm)
+
 	#decode to get audio sample
 	predicted_sample = tr.mulawDecode(output_size)(mulaw_output)
-	return next_input, predicted_sample
+	return next_input, predicted_sample, cutoff_index 
 
 
 def gaussian_probability(mu, sigma, target):

@@ -202,7 +202,7 @@ class AudioDataset(data.Dataset):
 			self.startoffset = self.load_start/self.sr
 			self.load_length = self.seqLen
 		else:
-			self.load_length = self.seqLen+1
+			self.load_length = self.seqLen+1 #since need to an offset of 1 sample between target and input
 			while self.fileDuration[self.chooseFileIndex] < (self.startoffset + self.seqLenInSec + 1/self.sr):
 				index = np.random.randint(self.indexLen)
 				self.chooseFileIndex,self.startoffset = choose_sequence_notsame(index+1,self.fileDuration,self.srInSec,self.stride)
@@ -294,7 +294,7 @@ class ParamDataset(data.Dataset):
 
 
 	def __getitem__(self,index):
-		generatedict, paramdict = self.rand_sample(index)		
+		generatedict, paramdict = self.rand_sample(index)
 		generatetensor = self.param_transform(generatedict) #tensor containing params to be generated
 		if len(self.prop)>0: 
 			paramtensor = self.param_transform(paramdict) #tensor containing conditional params
@@ -334,6 +334,7 @@ class ParamDataset(data.Dataset):
 		generatedict = pm.resampleAllParams(self.params,self.load_length,self.startoffset,self.startoffset+self.seqLenInSec,self.generate,verbose=False)
 		if len(self.prop)>0: 
 			paramdict = pm.resampleAllParams(self.params,self.load_length,self.startoffset,self.startoffset+self.seqLenInSec,self.prop,verbose=False)
+
 		return generatedict, paramdict
 
 

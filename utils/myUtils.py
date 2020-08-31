@@ -81,6 +81,7 @@ def config_parser(config_file,namespace=False):
 	return var
 
 def dictfilter(dic, keys):
+	"""return only specified key-values in a dict"""
 	return {key:dic[key] for key in keys}
 
 def print_both(file, *args):
@@ -88,6 +89,7 @@ def print_both(file, *args):
 	toprint = ' '.join([str(arg) for arg in args])
 	print(toprint)
 	file.write(toprint+'\n')
+
 
 #timing
 #*************************************
@@ -187,28 +189,28 @@ def listDirectory(directory,fileExtList='.wav',regex=None):
 	return fileList , fnameList
 
 def listDirectory_all(directory,fileExt='.wav',topdown=True):
-    """returns a list of all files in directory and all its subdirectories
+	"""returns a list of all files in directory and all its subdirectories
 	directory can also take a single file.
-    fileList: full path to file
-    fnameList: basenames
-    fnameList_noext: basenames with no extension"""
-    fileList = []
-    fnameList = []
-    fnameList_noext = []
-    if os.path.isdir(directory):
-        for root, _, files in os.walk(directory, topdown=topdown):
-            for name in files:
-                if name.endswith(fileExt):
-                    fileList.append(os.path.join(root, name))
-                    fnameList.append(name)
-                    fnameList_noext.append(os.path.splitext(name)[0])
-    else:
-        if directory.endswith(fileExt):
-            fileList.append(directory)
-            basename = os.path.basename(directory)
-            fnameList.append(basename)
-            fnameList_noext.append(os.path.splitext(basename)[0])       
-    return fileList, fnameList, fnameList_noext
+	fileList: full path to file
+	fnameList: basenames
+	fnameList_noext: basenames with no extension"""
+	fileList = []
+	fnameList = []
+	fnameList_noext = []
+	if os.path.isdir(directory):
+		for root, _, files in os.walk(directory, topdown=topdown):
+			for name in files:
+				if name.endswith(fileExt):
+					fileList.append(os.path.join(root, name))
+					fnameList.append(name)
+					fnameList_noext.append(os.path.splitext(name)[0])
+	else:
+		if directory.endswith(fileExt):
+			fileList.append(directory)
+			basename = os.path.basename(directory)
+			fnameList.append(basename)
+			fnameList_noext.append(os.path.splitext(basename)[0])       
+	return fileList, fnameList, fnameList_noext
 
 def mass_delete(directory,regex,topdown=True):
 	"""deletes all files matching regex in directory and all its subdirectories"""
@@ -239,6 +241,37 @@ def find_classes(dir):
 		classes = [i for i in range(len(dir))]
 		class_to_idx = {classes[i]: i for i in classes}
 	return classes, class_to_idx
+
+def formant_parse(file):
+	"""parses csv file to numpy array, where each column is a separate dimension.
+	Originally used to parse .formant files returned by praat signal processing.
+	Converts all string types to floats."""
+	
+	import csv  
+	bigmat = []
+
+	def conv(s):
+		try:
+			s=float(s)
+		except ValueError:
+			s = np.NaN    
+		return s
+
+	with open(file, newline='') as csvfile:  
+		data = csv.reader(csvfile, delimiter='\t')
+		for row in data:
+			rowarr = []
+			for cell in row:
+				y=conv(cell)
+				rowarr.append(y)
+			if rowarr: #if list is not empty
+				bigmat.append(rowarr)
+
+	x = [list(x) for x in list(zip(*bigmat))] #convert each column to list
+	x = np.array(x)
+
+	return(x)
+
 
 #nsynth dataset
 #*************************************

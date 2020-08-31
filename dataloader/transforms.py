@@ -79,7 +79,7 @@ class mulawDecode:
 
 
 class array2tensor:
-	"""Convert ndarrays in sample to Tensors. Samples are assumed to be python dicts"""
+	"""Convert ndarrays in sample to Tensors"""
 	def __init__(self,dtype):
 		self.dtype = dtype
 	
@@ -94,11 +94,12 @@ class dic2tensor:
 
 	def __call__(self, sample):
 		combined = np.stack([sample[i] for i in sample],axis=1)
-		if len(sample) > 1:			  
-			tensor_sample = torch.squeeze(torch.from_numpy(combined).type(self.dtype))
-		else:
-			tensor_sample = torch.from_numpy(combined).type(self.dtype)		
+		#if len(sample) > 1:			  
+		#	tensor_sample = torch.squeeze(torch.from_numpy(combined).type(self.dtype))
+		#else:
+		#	tensor_sample = torch.from_numpy(combined).type(self.dtype)		
 		
+		tensor_sample = torch.from_numpy(combined).type(self.dtype)
 		return tensor_sample
 
 

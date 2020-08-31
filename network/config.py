@@ -15,7 +15,7 @@ parser.add_argument('--net', type=int, default=0, choices=range(0, 7),
                         5=mixture density model, 6 onwards=legacy options to be compatible with older models')
 
 #training/audio data arguments
-parser.add_argument('--sample_rate', type=int, default=16000, help='sampling rate for input sound')
+parser.add_argument('--sample_rate', type=int, default=16000, help='sampling rate for input variable')
 parser.add_argument('--seq_len', type=int, default=4000, help='sequence length of each input data in no. of samples')
 parser.add_argument('--stride', type=int, default=1, help='shift in no. of samples between adjacent data sequences')
 parser.add_argument('--mulaw_channels', type=int, default=256, help='mu-law encoding channels')
@@ -48,12 +48,12 @@ def parse_args(is_training=True):
         parser.add_argument('--step', type=int, default=0, help='a specific step of pre-trained model to use')
         parser.add_argument('--length', type=int, default=16000, help='length of synthesized output in samples')
         group = parser.add_mutually_exclusive_group()
-        group.add_argument('--seed', type=str, default=None, help='a seed file to generate sound')
-        group.add_argument('--data_dir', type=str, default='./data/audio', help='a test data directory to generate sound')
+        group.add_argument('--seed', type=str, default=None, help='a seed file to load data for priming/self conditioning. Data will be pulled at beginning of file unless seed_start specified')
+        group.add_argument('--data_dir', type=str, default=None, help='a test data directory to load data for priming/self conditioning. Data will be pulled randomly')
         parser.add_argument('--seed_start', type=int, default=0, help='starting sample value to load data if seed is specified')
         parser.add_argument('--paramvect',default='self', const='self', nargs='?',choices=('self', 'external','none'),
                     help='source of paramvect. self(default): taken from data file, external: taken from numpy array, none: no conditioning')
-        parser.add_argument('--out', type=str, default='generated', help='output file name which is generated')
+        parser.add_argument('--out', type=str, default='generated', help='output file path for generated sequence')
         parser.add_argument('--external_array', type=str, default=None, help='a saved numpy array of shape [batch,length,features] for external conditioning')        
         parser.add_argument('--external_sr', type=int, default=None, help='original sample rate of external conditioning array')
         parser.add_argument('--save', action='store_true', help='save the output (if audio this is automatic)')
