@@ -42,7 +42,7 @@ Each tier is an individual model that is trained independently. First decide whi
 List the generation parameters under **generate** and the corresponding number of input channels as **gen_size**. List the conditioning parameters under **prop** and the corresponding number of channels as **cond_size**. Specify the **sample_rate** for the tier. **data_dir** and **param_dir** point to the directory containing the data files and parameter files respectively. Models will be saved in **output_dir**. Please consult config file for more options and the below for some recipes to get started. 
 
 ## Training
-![Training](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_training.png =500x) 
+![Training](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_training.png | width=500) 
 
 **Training frame-level tier (parameters only)**  
 For the below teacher forcing rate (TFR) is held constant at 0.5 throughout training duration.  
@@ -79,7 +79,7 @@ python3 train.py --hidden_size 300 --batch_size 16 --data_dir data/audio --param
 ``` 
 
 ## Generate
-![Generate](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_generation.png =500x)
+![Generate](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_generation.png | width=500)
 
 Generation has 3 modes of conditioning given by **paramvect** option:  
 * *self* (default): taken from priming data file  
