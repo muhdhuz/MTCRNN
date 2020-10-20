@@ -43,7 +43,6 @@ List the generation parameters under **generate** and the corresponding number o
 
 ## Training
 ![Training](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_training.png)
-<img src="https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_training.png" width="500"> 
 
 **Training frame-level tier (parameters only)**  
 For the below teacher forcing rate (TFR) is held constant at 0.5 throughout training duration.  
@@ -81,7 +80,6 @@ python3 train.py --hidden_size 300 --batch_size 16 --data_dir data/audio --param
 
 ## Generate
 ![Generate](https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_generation.png)
-<img src="https://github.com/muhdhuz/MTCRNN/blob/master/figures/mtcrnn_generation.png" width="500">
 
 Generation has 3 modes of conditioning given by **paramvect** option:  
 * *self* (default): taken from priming data file  
